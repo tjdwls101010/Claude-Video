@@ -247,7 +247,7 @@ def test_18_headless_export_without_wait_writes_nothing(proj):
 
 
 def test_19_loudness_normalisation_limits_true_peak_at_minus_2_unless_told(tmp_path):
-    """SKILL.md › Delivery: loudnessLufs normalises under a -2 dBTP limiter, so a peaky mix can land short; `settings.effects.loudness` (the form `export --settings` accepts) sets the target and the ceiling. `export --settings` refuses a top-level loudnessLufs."""
+    """SKILL.md › Delivery: loudnessLufs normalises under a -2 dBTP limiter, so a peaky mix can land short; `settings.effects.loudness` (the form `export --settings` accepts) sets the target and the ceiling. `export --settings` refuses a top-level loudnessLufs. AAC adds true peak above the PCM ceiling."""
     wave = "0.7*sin(2*PI*60*t)*exp(-25*mod(t\\,0.5))+0.15*sin(2*PI*440*t)*exp(-8*mod(t\\,0.5))"
     ffmpeg("-f", "lavfi", "-i", "color=c=gray:s=320x180:r=30:d=8", "-f", "lavfi", "-i", f"aevalsrc={wave}|{wave}:s=48000:d=8",
            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(tmp_path / "kick.mp4"))
@@ -261,4 +261,7 @@ def test_19_loudness_normalisation_limits_true_peak_at_minus_2_unless_told(tmp_p
     assert r.returncode != 0 and "loudnessLufs" in r.stderr
     fc("export", str(tmp_path / "b.mp4"), "--range", "entire", "--settings", '{"effects": {"loudness": {"enabled": true, "target_lufs": -14, "true_peak_dbtp": -1}}}', project=p, cwd=tmp_path)
     b = ff.loudness(tmp_path / "b.mp4")
-    assert -1.3 <= b.true_peak <= -0.8 and b.integrated > a.integrated
+    assert -1.3 <= b.true_peak <= -0.3 and b.integrated > a.integrated
+    # the limiter holds its ceiling on PCM; the AAC encode is what adds true peak above it
+    fc("exec", "file.exportMedia", json.dumps({"path": str(tmp_path / "c.wav"), "format": "wav", "range": "entire", "loudnessLufs": -14, "wait": True}), project=p, cwd=tmp_path)
+    assert ff.loudness(tmp_path / "c.wav").true_peak <= -1.9

@@ -62,3 +62,13 @@ def run(source: Source, commands: list[tuple[str, dict]], save: bool = False) ->
         msg = f"{failure['id']}: {failure.get('error')}" if failure else (last or f"filmcraft-cli exited {r.returncode} on {where}")
         raise ToolError(msg, r.stderr, [binary(), *args])
     return results
+
+
+def render(project: Path, seconds: float, out: Path, scale: float) -> Path:
+    """One Program frame of the project's active sequence, drawn by FilmCraft (captions and graphics included). Headless only: the CLI refuses `render` with --bridge."""
+    args = ["--project", str(project), "render", "--seconds", f"{seconds:.6f}", "--out", str(out), "--scale", f"{scale:.4f}"]
+    r = call(args, timeout=600)
+    if r.returncode != 0 or not Path(out).exists():
+        last = next((l for l in reversed(r.stderr.splitlines()) if l.strip()), f"exit {r.returncode}")
+        raise ToolError(f"render at {seconds:.3f} s failed: {last}", r.stderr, [binary(), *args])
+    return out

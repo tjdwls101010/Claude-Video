@@ -11,7 +11,7 @@ import json
 import sys
 from pathlib import Path
 
-from filmcraft import qc, timeline
+from filmcraft import frames, qc, timeline
 from filmcraft.errors import InputError, ToolError
 from filmcraft.filmcraft_cli import Source
 
@@ -35,6 +35,16 @@ Measure a rendered file (ffprobe streams, BS.1770 loudness and true peak via ffm
 Prints: {"file", "target", "pass", "failed": [check names], "warnings": [check names], "checks": [{name, value, expected, tolerance, level, pass, reason}]}. `pass` per check is true, false, or null when the value could not be measured (then `reason` says why).
 Exits: 0 nothing required failed (warnings allowed); 3 a required check failed, named in `failed`; 2 the file is missing or not media, or the command line must change; 1 ffmpeg/ffprobe is missing or failed.
 When a loudness fix is needed, re-export with file.exportMedia loudnessLufs set to the target; FilmCraft's true-peak limiter wins over the integrated target, so a file that still misses after two re-exports is reported with its measurements instead of exported again.
+
+"""
+
+
+FRAMES_DESC = """\
+Look at an edit without playing it: frames laid out as one contact sheet, each labelled with its timecode.
+--project renders through FilmCraft (headless), so captions, titles and effects show as exported (captions are drawn even when an export would not burn them). --media extracts from a file with ffmpeg, for scanning source material.
+To check what the running app shows, unsaved edits included: send `file.saveCopy {"path": "/abs/copy.fcproj"}` over --bridge (it leaves the app's own path and dirty state alone), then run frames --project on that copy. One frame from the app itself: the MCP tool render_frame.
+Prints: {"sheet": "<--out path>", "frames": [{"t": seconds, "tc": "HH:MM:SS:FF"}], "size": "WxH of one tile", "grid": {cols, rows, tile_w, tile_h, cell_h}, "notes": [...]}. Read the sheet image to see the frames.
+Exits: 0 written; 2 the command line must change (--cuts without --project, more than 100 frames, a time that cannot be read, a file that is not video); 1 filmcraft-cli or ffmpeg failed (offline media in the project, no active sequence).
 
 """
 
@@ -83,6 +93,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--expect-fps", type=float, metavar="F", help="required frame rate, e.g. 29.97 (within 0.01)")
     p.add_argument("--expect-duration", type=float, metavar="S", help="required duration in seconds, within one frame")
     p.set_defaults(run=run_qc)
+
+    p = sub.add_parser("frames", help="contact sheet of rendered or extracted frames, optionally with safe zones", description=FRAMES_DESC + frames.HELP_TABLE, formatter_class=fmt)
+    src = p.add_mutually_exclusive_group(required=True)
+    src.add_argument("--project", type=Path, metavar="P.fcproj", help="render the project's active sequence through FilmCraft (headless)")
+    src.add_argument("--media", type=Path, metavar="FILE", help="extract frames from a media file with ffmpeg")
+    pick = p.add_mutually_exclusive_group(required=True)
+    pick.add_argument("--at", nargs="+", metavar="T", help="times: seconds (12.5) or timecode (00:00:12:15) at the sequence's or file's rate")
+    pick.add_argument("--cuts", action="store_true", help="the first frame of every video clip (needs --project)")
+    pick.add_argument("--every", type=float, metavar="SEC", help="one frame every SEC seconds from the start")
+    p.add_argument("--overlay", choices=[*frames.SAFE_ZONES, "all"], help="draw a vertical platform's UI areas and safe box (9:16 frames only)")
+    p.add_argument("--cols", type=int, default=4, metavar="N", help="tiles per row (default 4)")
+    p.add_argument("--width", type=int, metavar="PX", help="width of one tile (default 480 landscape, 320 vertical)")
+    p.add_argument("--out", type=Path, required=True, metavar="SHEET.png", help="where to write the sheet")
+    p.set_defaults(run=lambda a: frames.sheet(a.out.resolve(), project=a.project.resolve() if a.project else None, media=a.media.resolve() if a.media else None,
+                                              at=a.at, every=a.every, cuts=a.cuts, overlay=a.overlay, cols=a.cols, width=a.width))
     return root
 
 

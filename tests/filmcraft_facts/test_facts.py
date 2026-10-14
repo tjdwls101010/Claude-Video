@@ -244,3 +244,21 @@ def test_18_headless_export_without_wait_writes_nothing(proj):
     r = fc_json("exec", "file.exportMedia", json.dumps({"path": str(d / "nowait.mp4"), "format": "h264", "range": "entire"}), project=p, cwd=d)
     assert "job" in r
     assert not (d / "nowait.mp4").exists()
+
+
+def test_19_loudness_normalisation_limits_true_peak_at_minus_2_unless_told(tmp_path):
+    """SKILL.md › Delivery: loudnessLufs normalises under a -2 dBTP limiter, so a peaky mix can fall short of -14; `settings.effects.loudness` (also accepted by `export --settings`) sets the target and a -1 dBTP ceiling. `export --settings` refuses a top-level loudnessLufs."""
+    wave = "0.7*sin(2*PI*60*t)*exp(-25*mod(t\\,0.5))+0.15*sin(2*PI*440*t)*exp(-8*mod(t\\,0.5))"
+    ffmpeg("-f", "lavfi", "-i", "color=c=gray:s=320x180:r=30:d=8", "-f", "lavfi", "-i", f"aevalsrc={wave}|{wave}:s=48000:d=8",
+           "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(tmp_path / "kick.mp4"))
+    p = tmp_path / "k.fcproj"
+    fc("--save-as", str(p), "import", str(tmp_path / "kick.mp4"), cwd=tmp_path)
+    fc("--save", "exec", "file.newSequenceFromClip", "items=[1]", project=p, cwd=tmp_path)
+    fc("exec", "file.exportMedia", json.dumps({"path": str(tmp_path / "a.mp4"), "format": "h264", "range": "entire", "loudnessLufs": -14, "wait": True}), project=p, cwd=tmp_path)
+    a = ff.loudness(tmp_path / "a.mp4")
+    assert a.true_peak <= -1.9 and a.integrated < -14.5
+    r = fc("export", str(tmp_path / "x.mp4"), "--range", "entire", "--settings", '{"loudnessLufs": -14}', project=p, cwd=tmp_path, check=False)
+    assert r.returncode != 0 and "loudnessLufs" in r.stderr
+    fc("export", str(tmp_path / "b.mp4"), "--range", "entire", "--settings", '{"effects": {"loudness": {"enabled": true, "target_lufs": -14, "true_peak_dbtp": -1}}}', project=p, cwd=tmp_path)
+    b = ff.loudness(tmp_path / "b.mp4")
+    assert -1.3 <= b.true_peak <= -0.8 and b.integrated > a.integrated

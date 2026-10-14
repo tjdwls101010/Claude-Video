@@ -121,7 +121,7 @@ When: a grade is asked for, or the picture is clearly off (log footage, a colour
 ## Delivery
 
 - Every export: `range: "entire"` (the default is In to Out), `burnCaptions` and `captionSidecar` as intended, loudness at the qc target, `"wait": true` under `exec`.
-- Loudness: `loudnessLufs` normalises (BS.1770) under a −2 dBTP limiter, so a peaky mix can land short of its target. The ceiling is `true_peak_dbtp` in `settings.effects.loudness`, which is also the only form `export --settings` accepts (a top-level `loudnessLufs` there is refused). AAC encoding adds up to about a dB of true peak above the ceiling, which is why qc measures the encoded file.
+- Loudness: `loudnessLufs` normalises (BS.1770) under a −2 dBTP limiter, so a peaky mix can land short of its target. The ceiling is `true_peak_dbtp` in `settings.effects.loudness`, which is also the only form `export --settings` accepts (a top-level `loudnessLufs` there is refused). AAC encoding can raise true peak above the ceiling, which is why qc measures the encoded file.
 - Presets: "YouTube 1080p Full HD" for YouTube, "Social Vertical 1080×1920" for vertical. `hardwareEncoding: "auto"` is much faster (not with CRF or 2-pass); H.265 needs hardware encoding, and there is no AV1 export.
 - Offline media renders as placeholder frames: fix it with `media.findMissing`; never `--allow-offline` a deliverable.
 - Then `qc FILE --target …`. When it warns `moov_position`, the faststart remux above, and nothing else: the edit list stays.

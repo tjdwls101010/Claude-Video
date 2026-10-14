@@ -11,7 +11,7 @@ import json
 import sys
 from pathlib import Path
 
-from filmcraft import frames, qc, timeline
+from filmcraft import frames, qc, timeline, transcribe
 from filmcraft.errors import InputError, ToolError
 from filmcraft.filmcraft_cli import Source
 
@@ -45,6 +45,18 @@ Look at an edit without playing it: frames laid out as one contact sheet, each l
 To check what the running app shows, unsaved edits included: send `file.saveCopy {"path": "/abs/copy.fcproj"}` over --bridge (it leaves the app's own path and dirty state alone), then run frames --project on that copy. One frame from the app itself: the MCP tool render_frame.
 Prints: {"sheet": "<--out path>", "frames": [{"t": seconds, "tc": "HH:MM:SS:FF"}], "size": "WxH of one tile", "grid": {cols, rows, tile_w, tile_h, cell_h}, "notes": [...]}. Read the sheet image to see the frames.
 Exits: 0 written; 2 the command line must change (--cuts without --project, more than 100 frames, a time that cannot be read, a file that is not video); 1 filmcraft-cli or ffmpeg failed (offline media in the project, no active sequence).
+
+"""
+
+
+TRANSCRIBE_DESC = f"""\
+Speech to a word-timed FilmCraft transcript, because this FilmCraft build cannot transcribe (transcript.generate and transcript.downloadModel are disabled).
+Runs mlx-whisper (default {transcribe.DEFAULT_MODEL}, about 1.6 GB, downloaded to ~/.cache/huggingface on first use; ask before that first download) with word timestamps, measures where speech is from the audio level, and moves Whisper's word edges onto it: an edge Whisper put in silence moves inward to the speech edge, however far, staying inside the word; the first word of a stretch of speech may start earlier, and the last may end later, by at most --max-shift. A word with no speech under it keeps Whisper's time. Under continuous music the level never drops, so only the outer edges of that passage can move.
+Writes --out as one `transcript.set` line (media-time ticks, Whisper's word probability as confidence), plus <out>.txt (one line per Whisper segment: [w<first>-w<last>] start-end text, the word indices those commands take) and <out>.whisper.json (the raw recognition, reusable with --from-json).
+Before applying: correct misrecognised words (names, terms) by editing the text fields of --out in place, keeping start/end. Then apply with the `next` command; the transcript attaches to the media item, so every clip of it in every sequence gets it.
+Prints: {{"item", "language", "words", "seconds", "speech_seconds", "snapped" (words with an edge moved), "unmatched" (words over no speech), "review": [{{"i", "text", "start_s", "reason"}}] (at most {transcribe.REVIEW_SHOWN}; the rest in review_file), "review_total", "out", "text", "whisper_json", "next"}}.
+Review reasons: low_prob (Whisper's word probability below {transcribe.LOW_PROB}); unmatched (no speech measured under the word); repeat (the same line in three or more consecutive segments, Whisper's usual hallucination over music or silence); no_speech (a segment Whisper's own no-speech test rejects). Listen-free check: a repeat or no_speech line over background music is almost always invented; delete those words from --out before applying.
+Exits: 0 written; 2 the media is missing or has no audio, or --from-json is not mlx-whisper JSON; 1 ffmpeg, uvx or mlx-whisper failed.
 
 """
 
@@ -108,6 +120,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", type=Path, required=True, metavar="SHEET.png", help="where to write the sheet")
     p.set_defaults(run=lambda a: frames.sheet(a.out.resolve(), project=a.project.resolve() if a.project else None, media=a.media.resolve() if a.media else None,
                                               at=a.at, every=a.every, cuts=a.cuts, overlay=a.overlay, cols=a.cols, width=a.width))
+
+    p = sub.add_parser("transcribe", help="mlx-whisper words snapped to measured speech, as a transcript.set line", description=TRANSCRIBE_DESC, formatter_class=fmt)
+    p.add_argument("media", type=Path, metavar="MEDIA", help="the media file the project item points at")
+    p.add_argument("--item", type=int, required=True, metavar="ID", help="its project item id (inspect project lists them)")
+    p.add_argument("--out", type=Path, required=True, metavar="X.jsonl", help="where to write the transcript.set line (siblings .txt and .whisper.json go next to it)")
+    p.add_argument("--language", metavar="CODE", help="spoken language, e.g. ko or en (default: Whisper detects it)")
+    p.add_argument("--model", default=transcribe.DEFAULT_MODEL, metavar="REPO", help=f"mlx-whisper model (default {transcribe.DEFAULT_MODEL})")
+    p.add_argument("--max-shift", type=float, default=0.5, metavar="SEC", help="how far an outer edge of a stretch of speech may move outward (default 0.5)")
+    p.add_argument("--from-json", type=Path, metavar="W.json", help="reuse an mlx-whisper JSON from an earlier run instead of running the model")
+    p.set_defaults(run=lambda a: transcribe.transcribe(a.media.resolve(), a.item, a.out.resolve(), a.language, a.model, a.max_shift, a.from_json.resolve() if a.from_json else None))
     return root
 
 

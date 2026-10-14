@@ -1,0 +1,123 @@
+{
+ "text": " 오늘은 편집 이야기를 해볼게요. 자막은 문장 단위로 끊어야 읽기 편합니다. 그럼 바로 시작하겠습니다.",
+ "segments": [
+  {
+   "id": 0,
+   "seek": 0,
+   "start": 0.0,
+   "end": 2.52,
+   "text": " 오늘은 편집 이야기를 해볼게요.",
+   "temperature": 0,
+   "avg_logprob": -0.1611935888017927,
+   "compression_ratio": 1.0866141732283465,
+   "no_speech_prob": 7.417130278020156e-12,
+   "words": [
+    {
+     "word": " 오늘은",
+     "start": 0.0,
+     "end": 0.88,
+     "probability": 0.998046875
+    },
+    {
+     "word": " 편집",
+     "start": 0.88,
+     "end": 1.4,
+     "probability": 1.0
+    },
+    {
+     "word": " 이야기를",
+     "start": 1.4,
+     "end": 1.82,
+     "probability": 0.9970703125
+    },
+    {
+     "word": " 해볼게요.",
+     "start": 1.82,
+     "end": 2.52,
+     "probability": 0.9765625
+    }
+   ]
+  },
+  {
+   "id": 1,
+   "seek": 0,
+   "start": 3.7,
+   "end": 6.4,
+   "text": " 자막은 문장 단위로 끊어야 읽기 편합니다.",
+   "temperature": 0,
+   "avg_logprob": -0.1611935888017927,
+   "compression_ratio": 1.0866141732283465,
+   "no_speech_prob": 7.417130278020156e-12,
+   "words": [
+    {
+     "word": " 자막은",
+     "start": 3.54,
+     "end": 4.12,
+     "probability": 0.99951171875
+    },
+    {
+     "word": " 문장",
+     "start": 4.12,
+     "end": 4.54,
+     "probability": 0.99951171875
+    },
+    {
+     "word": " 단위로",
+     "start": 4.54,
+     "end": 5.0,
+     "probability": 0.9970703125
+    },
+    {
+     "word": " 끊어야",
+     "start": 5.0,
+     "end": 5.42,
+     "probability": 0.9990234375
+    },
+    {
+     "word": " 읽기",
+     "start": 5.42,
+     "end": 5.78,
+     "probability": 1.0
+    },
+    {
+     "word": " 편합니다.",
+     "start": 5.78,
+     "end": 6.4,
+     "probability": 1.0
+    }
+   ]
+  },
+  {
+   "id": 2,
+   "seek": 0,
+   "start": 7.3,
+   "end": 9.3,
+   "text": " 그럼 바로 시작하겠습니다.",
+   "temperature": 0,
+   "avg_logprob": -0.1611935888017927,
+   "compression_ratio": 1.0866141732283465,
+   "no_speech_prob": 7.417130278020156e-12,
+   "words": [
+    {
+     "word": " 그럼",
+     "start": 7.3,
+     "end": 8.0,
+     "probability": 0.99951171875
+    },
+    {
+     "word": " 바로",
+     "start": 8.0,
+     "end": 8.4,
+     "probability": 0.8515625
+    },
+    {
+     "word": " 시작하겠습니다.",
+     "start": 8.4,
+     "end": 9.3,
+     "probability": 0.998046875
+    }
+   ]
+  }
+ ],
+ "language": "ko"
+}

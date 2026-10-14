@@ -248,14 +248,14 @@ window.seek = t => { if (t > 0.95) throw new Error('broken at ' + t);
 
 
 def test_an_animation_shorter_than_the_load_still_plays_from_page_open(tmp_path):
-    """The page busies itself for 0.8 s in its load handler, after the animation has started; a 0.3 s animation must still be at 0.15 s when frame 0.15 s is drawn, not over (and gone from the page's animations) before capture began."""
-    body = """<style>#c{position:absolute;top:0;left:0;width:50px;height:50px;background:#00f;animation:mv .3s linear}@keyframes mv{from{left:0}to{left:1000px}}</style>
-<div id=c></div><script>addEventListener('load', () => { const t0 = performance.now(); while (performance.now() - t0 < 800) {} })</script>"""
+    """Twenty 50 ms parser-blocking scripts after the animated box hold the load event about 1 s while Chrome renders frames between them, so a 0.3 s animation started at the first frame is over, and gone from the page's animations, before capture begins unless the clock was frozen from page open. Frame 3 at 20 fps (0.15 s) must show it halfway."""
+    busy = "<script>{const t = performance.now(); while (performance.now() - t < 50) {}}</script>" * 20
+    body = "<style>#c{position:absolute;top:0;left:0;width:50px;height:50px;background:#00f;animation:mv .3s linear}@keyframes mv{from{left:0}to{left:1000px}}</style><div id=c></div>" + busy
     w, h = 1100, 50
     code, out, raw, err = graphic(tmp_path, str(page(tmp_path, body)), "--out", str(tmp_path / "t.mov"), "--size", f"{w}x{h}", "--fps", "20", "--duration", "0.5")
     assert code == 0, raw + err
     frames = decode_rgba(tmp_path / "t.mov", w, h)
-    assert abs(left_edge(frames[3], w, 25) - 500) <= 1          # frame 3 at 20 fps is 0.15 s: halfway
+    assert abs(left_edge(frames[3], w, 25) - 500) <= 1
 
 
 # -- stills ----------------------------------------------------------------------------------------------------------------

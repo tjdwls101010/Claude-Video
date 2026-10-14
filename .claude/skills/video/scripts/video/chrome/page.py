@@ -110,7 +110,7 @@ class Page:
         self._page = self._context.new_page()
         cdp = self._context.new_cdp_session(self._page)
         cdp.send("Animation.enable")
-        pass
+        cdp.send("Animation.setPlaybackRate", {"playbackRate": 0})
         self._page.on("pageerror", lambda e: self._errors.append(" ".join(str(e).split())[:300]))
         self._page.on("requestfailed", self._failed)
         self._load(path)

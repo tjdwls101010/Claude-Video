@@ -1,26 +1,28 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["pillow>=10"]
+# dependencies = ["pillow>=10", "playwright>=1.50"]
 # ///
-"""Tools FilmCraft lacks for editing from the shell: speech to word-timed transcripts, Korean caption layout, a compact timeline readout, frame contact sheets, and delivery QC. This file is the whole command surface (parser, help, dispatch, exit codes); what each command does lives in the `video` package."""
+"""Tools FilmCraft lacks for editing from the shell: speech to word-timed transcripts, Korean caption layout, a compact timeline readout, frame contact sheets, delivery QC, and graphics rendered from HTML pages. This file is the whole command surface (parser, help, dispatch, exit codes); what each command does lives in the `video` package."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
-from video import captions, frames, qc, timeline, transcribe
+from video import captions, frames, graphic, qc, timeline, transcribe
 from video.errors import InputError, ToolError
 from video.filmcraft import Source
+from video.timecode import Rate
 
 EXIT_OK, EXIT_TOOL, EXIT_USAGE, EXIT_QC_FAIL = 0, 1, 2, 3
 
 ROOT_EPILOG = """\
 Every command prints one JSON document on stdout; progress and diagnostics go to stderr.
-Exit codes: 0 success; 1 an external tool (filmcraft-cli, ffmpeg, mlx-whisper) failed or is missing, and the JSON carries `error` and `stderr_tail`; 2 the command line must change, and the JSON carries `error` and the `help` to read; 3 only from `qc`, when a required check failed.
+Exit codes: 0 success; 1 an external tool (filmcraft-cli, ffmpeg, mlx-whisper, Chrome) failed or is missing, and the JSON carries `error` and `stderr_tail`; 2 the command line must change, and the JSON carries `error` and the `help` to read; 3 only from `qc`, when a required check failed.
 Commands that read a project take exactly one of --project P.fcproj (headless, the file on disk) or --bridge 127.0.0.1:PORT (the running app, including unsaved edits)."""
 
 TIMELINE_DESC = """\
@@ -79,6 +81,24 @@ def size_arg(text: str) -> tuple[int, int]:
         return int(w), int(h)
     except ValueError:
         raise argparse.ArgumentTypeError(f"expected WxH like 1080x1920, got {text!r}")
+
+
+def rate_arg(text: str) -> Rate:
+    """An exact frame rate: an integer (30) or a fraction (30000/1001). A decimal such as 29.97 is refused because it is not the NTSC rate 30000/1001."""
+    m = re.fullmatch(r"(\d+)(?:/(\d+))?", text)
+    if not m or int(m[1]) == 0 or int(m[2] or 1) == 0:
+        raise argparse.ArgumentTypeError(f"expected an integer or an exact fraction such as 30000/1001, got {text!r} (a decimal is not an exact NTSC rate)")
+    return Rate(int(m[1]), int(m[2] or 1))
+
+
+def non_negative(text: str) -> float:
+    try:
+        v = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a number, got {text!r}")
+    if not (v >= 0 and math.isfinite(v)):
+        raise argparse.ArgumentTypeError(f"must be a finite number of at least 0, got {text}")
+    return v
 
 
 def positive(text: str) -> float:
@@ -172,7 +192,29 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-shift", type=float, default=0.5, metavar="SEC", help="how far an outer edge of a stretch of speech may move outward (default 0.5)")
     p.add_argument("--from-json", type=Path, metavar="W.json", help="reuse an mlx-whisper JSON from an earlier run instead of running the model")
     p.set_defaults(run=lambda a: transcribe.transcribe(a.media.resolve(), a.item, a.out.resolve(), a.language, a.model, a.max_shift, a.from_json.resolve() if a.from_json else None))
+
+    p = sub.add_parser("graphic", help="a local HTML page rendered to a transparent MOV (with its sound) or PNG still for FilmCraft", description=graphic.HELP, formatter_class=fmt)
+    p.add_argument("page", type=Path, metavar="PAGE.html", help="the page to render, a local HTML file")
+    p.add_argument("--out", type=Path, required=True, metavar="X.mov|X.png", help="what to write, chosen by extension: .mov a transparent ProRes 4444 movie, .png one transparent still. An existing file is replaced only after the new one is written and verified")
+    src = p.add_mutually_exclusive_group(required=True)
+    src.add_argument("--project", type=Path, metavar="P.fcproj", help="take the frame size and rate from this project's sequence (headless)")
+    src.add_argument("--bridge", metavar="127.0.0.1:PORT", help="take them from the running app's sequence")
+    src.add_argument("--size", type=size_arg, metavar="WxH", help="no sequence yet (a motion graphic on its own): the frame size, with --fps")
+    p.add_argument("--fps", type=rate_arg, metavar="F", help="with --size: the frame rate, an integer (30) or an exact fraction (30000/1001, 24000/1001, 60000/1001); a decimal such as 29.97 is refused")
+    p.add_argument("--sequence", type=int, metavar="ITEM", help="with --project or --bridge: the sequence's project item id, when it is not the active one; `next` then opens it before placing")
+    p.add_argument("--duration", type=positive, metavar="S", help=".mov: length in seconds (default: the page's window.duration)")
+    p.add_argument("--frame-at", type=non_negative, default=0.0, metavar="T", help=".png: the page time to capture, in seconds (default 0); page time, not a timeline position")
+    p.set_defaults(run=run_graphic)
     return root
+
+
+def run_graphic(a) -> dict:
+    if (a.size is None) != (a.fps is None):
+        raise InputError("--size and --fps go together (no sequence yet); with --project or --bridge both come from the sequence")
+    if a.sequence is not None and a.size is not None:
+        raise InputError("--sequence needs --project or --bridge")
+    source = source_of(a) if a.size is None else None
+    return graphic.render(a.page.resolve(), a.out.resolve(), source=source, size=a.size, rate=a.fps, sequence=a.sequence, duration=a.duration, frame_at=a.frame_at)
 
 
 def run_qc(a) -> dict:

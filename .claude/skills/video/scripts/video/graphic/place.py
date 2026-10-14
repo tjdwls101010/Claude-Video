@@ -60,7 +60,7 @@ def next_steps(out: Path, kind: str, audio: bool, source: Source | None, sequenc
         elif source is not None and source.bridge is not None:
             result["if_placed"] = ("Same length, sound, size and rate as the file it replaced (not necessarily as the file was when its clip was imported: if an earlier re-render reported a change and the clip was not placed again since, clear and place it as that one said). "
                                    "If the clip is placed, the running app keeps showing the render it opened until it is relinked: "
-                                   f"filmcraft-cli --bridge {q(str(source.bridge))} exec media.replaceFootage '{{\"item\":<placed item>,\"path\":{json.dumps(str(out), ensure_ascii=False)}}}' "
+                                   f"filmcraft-cli --bridge {q(str(source.bridge))} exec media.replaceFootage {q('{\"item\":<placed item>,\"path\":' + json.dumps(str(out), ensure_ascii=False) + '}')} "
                                    "(<placed item>: the project item of the placed clip, `item` in `timeline`'s detail; media.refreshChanged is not enough). If not placed yet, run the steps.")
         else:
             result["if_placed"] = ("Same length, sound, size and rate as the file it replaced: a clip placed from it now plays this render and nothing else is needed, unless an earlier re-render reported a change and the clip was not placed again since "

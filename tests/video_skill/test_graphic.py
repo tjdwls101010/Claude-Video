@@ -323,6 +323,27 @@ def test_fonts_report_the_face_that_drew_and_flag_substitutes(tmp_path):
     assert fonts["NoSuchLaterFamily"]["fallback"] is True                       # text that appears later is sampled too
 
 
+def test_a_script_neither_probe_face_covers_is_still_checked(tmp_path):
+    """Arabic: neither Hangul probe face has it, so a missing family and the face that stands in for it look alike to the two-probe check; a family named for the face that draws it is no substitution."""
+    body = """<p style="font-family:'NoSuchArabicFamily'">مرحبا</p><p style="font-family:'Geeza Pro'">مرحبا بكم</p>"""
+    code, out, raw, err = graphic(tmp_path, str(page(tmp_path, body)), "--out", str(tmp_path / "g.png"), "--size", "320x180", "--fps", "30")
+    assert code == 0, raw + err
+    fonts = {f["family"]: f for f in out["fonts"]}
+    assert fonts["NoSuchArabicFamily"]["fallback"] is True
+    assert fonts["Geeza Pro"]["fallback"] is False
+
+
+def test_an_apostrophe_in_the_path_survives_the_shell(tmp_path):
+    import shlex
+    p = page(tmp_path, SWATCHES)
+    out_path = tmp_path / "John's title.mov"
+    for _ in range(2):
+        code, out, raw, err = graphic(tmp_path, str(p), "--out", str(out_path), "--size", "64x64", "--fps", "30", "--duration", "0.1")
+        assert code == 0, raw + err
+    args = [shlex.split(step) for step in out["next"]["steps"]]          # every step stays one valid shell line
+    assert str(out_path) in args[0]
+
+
 def test_websockets_are_blocked_and_listed(tmp_path):
     body = "<script>window.opened = new WebSocket('wss://echo.websocket.org/feed')</script><div style='width:10px;height:10px;background:red'></div>"
     code, out, raw, err = graphic(tmp_path, str(page(tmp_path, body)), "--out", str(tmp_path / "g.png"), "--size", "320x180", "--fps", "30")

@@ -411,7 +411,8 @@ def test_23_a_placed_clip_keeps_the_length_and_streams_read_at_import(tmp_path):
            "-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", "-c:a", "pcm_s16le", str(g))
     assert tracks(p, tmp_path)["V2"] == [("shorter.mov", 1.0, 4.0)] and tracks(p, tmp_path)["A2"] == [("shorter.mov", 1.0, 4.0)]
     assert lime_at(p, "shorter", 1.2)
-    fc("render", "--seconds", "3.5", "--out", str(tmp_path / "held.png"), project=p, cwd=tmp_path)
+    # timeline 3.2 s is media 2.2 s: a held last frame is blue, a loop of the 1 s file would be at 0.2 s and lime
+    fc("render", "--seconds", "3.2", "--out", str(tmp_path / "held.png"), project=p, cwd=tmp_path)
     r, gr, b = centre(tmp_path / "held.png")
     assert b > 150 and gr < 60                                          # the last frame holds to the old end
     assert tone_peak(p, "shorter_in", 1.2) > -25 and tone_peak(p, "shorter_past", 2.5) < -60

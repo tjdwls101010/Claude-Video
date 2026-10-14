@@ -225,3 +225,10 @@ def test_a_json_that_is_not_mlx_whisper_output_is_a_usage_error(tmp_path):
     (tmp_path / "w.json").write_text("[]")
     code, res, raw, err = skill("transcribe", str(audio), "--item", "1", "--out", str(tmp_path / "t.jsonl"), "--from-json", str(tmp_path / "w.json"), cwd=tmp_path)
     assert code == 2 and res and "w.json" in res["error"]
+
+
+def test_a_non_finite_word_time_is_a_usage_error(tmp_path):
+    audio = tone_bursts(tmp_path / "b.wav", [(1.0, 2.0)], 3)
+    (tmp_path / "w.json").write_text(json.dumps({"language": "ko", "segments": [{"start": 1, "end": 2, "text": "가", "words": [{"word": "가", "start": "NaN", "end": 2, "probability": 1}]}]}))
+    code, res, raw, err = skill("transcribe", str(audio), "--item", "1", "--out", str(tmp_path / "t.jsonl"), "--from-json", str(tmp_path / "w.json"), cwd=tmp_path)
+    assert code == 2 and res and "w.json" in res["error"]

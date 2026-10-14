@@ -319,3 +319,17 @@ def test_impossible_rule_values_are_usage_errors(tmp_path, args):
     src.write_text("1\n00:00:00,000 --> 00:00:02,000\n좋은 질문이에요.\n", encoding="utf-8")
     code, res, raw, err = skill("captions", "--cues", str(src), "--out", str(tmp_path / "o.srt"), *args, cwd=tmp_path)
     assert code == 2 and res and "error" in res
+
+
+def test_relaid_cues_start_inside_their_source_and_a_sub_frame_cue_is_reported():
+    cues = captions.relayout([captions.Cue(1.01, 2.0, ["네."]), captions.Cue(3.0, 3.01, ["예."])], RULES, FPS)
+    assert cues[0].start >= 1.01
+    assert any(v["cue"] == 2 and v["kind"] == "short" for v in captions.violations(cues, RULES))
+
+
+@pytest.mark.parametrize("args", [["--fps", "inf"], ["--cps", "nan"]])
+def test_non_finite_rule_values_are_usage_errors(tmp_path, args):
+    src = tmp_path / "ko.srt"
+    src.write_text("1\n00:00:00,000 --> 00:00:02,000\n좋은 질문이에요.\n", encoding="utf-8")
+    code, res, raw, err = skill("captions", "--cues", str(src), "--out", str(tmp_path / "o.srt"), *args, cwd=tmp_path)
+    assert code == 2 and res and "error" in res

@@ -121,12 +121,14 @@ def group(ws: list[Word], rules: Rules, fits: Fits) -> list[tuple[int, int, list
     return out[::-1]
 
 
-def time_cues(ws: list[Word], groups, rules: Rules, fps: Fraction, caps: dict[int, float] | None = None) -> list[Cue]:
-    """Frame-aligned times: a cue starts on its first word and stays up long enough to read (and at least `min_s`), but not past the next cue less a small gap, nor past `caps[group]` when given."""
+def time_cues(ws: list[Word], groups, rules: Rules, fps: Fraction, caps: dict[int, tuple[float, float]] | None = None) -> list[Cue]:
+    """Frame-aligned times: a cue starts on its first word and stays up long enough to read (and at least `min_s`), but not past the next cue less a small gap. With `caps` ({group: (start, end)}), a cue starts on the first frame inside its group's span and ends by its last; a span holding no whole frame still gets one, and `violations` reports it as short."""
     f = float(fps)
     starts = []
     for i, _, _ in groups:
         s = math.floor(ws[i].start * f + 1e-6)
+        if caps and ws[i].group in caps:
+            s = max(s, math.ceil(caps[ws[i].group][0] * f - 1e-6))
         if starts and s <= starts[-1]:
             s = starts[-1] + 1
         starts.append(s)
@@ -141,13 +143,13 @@ def time_cues(ws: list[Word], groups, rules: Rules, fps: Fraction, caps: dict[in
             if e > nxt - rules.gap_frames or nxt - e < round(rules.close_gap_s * f):
                 e = nxt - rules.gap_frames
         if caps and ws[j].group in caps:
-            e = min(e, math.floor(caps[ws[j].group] * f + 1e-6))
+            e = min(e, math.floor(caps[ws[j].group][1] * f + 1e-6))
         e = max(e, s + 1)
         cues.append(Cue(s / f, e / f, lines))
     return cues
 
 
-def layout(words: list[Word], rules: Rules, fps, fits: Fits | None = None, caps: dict[int, float] | None = None) -> list[Cue]:
+def layout(words: list[Word], rules: Rules, fps, fits: Fits | None = None, caps: dict[int, tuple[float, float]] | None = None) -> list[Cue]:
     ws = sorted((w for w in words if w.text.strip()), key=lambda w: (w.start, w.end))
     if not ws:
         return []
@@ -156,11 +158,11 @@ def layout(words: list[Word], rules: Rules, fps, fits: Fits | None = None, caps:
 
 
 def relayout(cues: list[Cue], rules: Rules, fps, fits: Fits | None = None) -> list[Cue]:
-    """Cues written elsewhere (a translation) laid out again: each cue's words share its time in proportion to their length, and every new cue stays inside the old cue it came from (a cue too short to read is reported, not stretched)."""
+    """Cues written elsewhere (a translation) laid out again: each cue's words share its time in proportion to their length, and every new cue stays inside the old cue it came from, on whole frames (a cue too short to read is reported, not stretched)."""
     words: list[Word] = []
-    caps: dict[int, float] = {}
+    caps: dict[int, tuple[float, float]] = {}
     for g, c in enumerate(sorted(cues, key=lambda c: c.start)):
-        caps[g] = c.end
+        caps[g] = (c.start, c.end)
         toks = " ".join(c.lines).split()
         if not toks:
             continue

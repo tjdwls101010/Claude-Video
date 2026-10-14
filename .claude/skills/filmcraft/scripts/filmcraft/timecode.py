@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from fractions import Fraction
 
-_TC = re.compile(r"^(\d+):(\d{2}):(\d{2})([:;])(\d{2})$")
+_TC = re.compile(r"^(\d+):(\d{2}):(\d{2})([:;])(\d{2,3})$")
 
 TICKS_PER_SECOND = 254_016_000_000
 

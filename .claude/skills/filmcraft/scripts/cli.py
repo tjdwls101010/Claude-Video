@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -85,8 +86,8 @@ def positive(text: str) -> float:
         v = float(text)
     except ValueError:
         raise argparse.ArgumentTypeError(f"expected a number, got {text!r}")
-    if not v > 0:
-        raise argparse.ArgumentTypeError(f"must be greater than 0, got {text}")
+    if not (v > 0 and math.isfinite(v)):
+        raise argparse.ArgumentTypeError(f"must be a finite number greater than 0, got {text}")
     return v
 
 

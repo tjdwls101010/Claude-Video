@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -52,6 +53,8 @@ def read(path: Path) -> Recognition:
         segs = []
         for s in d["segments"]:
             words = [RawWord(str(w.get("word", "")).strip(), float(w["start"]), float(w["end"]), float(w.get("probability", 1.0))) for w in s.get("words") or []]
+            if not all(math.isfinite(x) for w in words for x in (w.start, w.end, w.prob)):
+                raise ValueError("a word time or probability is not a finite number")
             segs.append(Segment(float(s.get("start", 0)), float(s.get("end", 0)), str(s.get("text") or "").strip(), float(s.get("no_speech_prob", 0.0)),
                                 float(s.get("avg_logprob", 0.0)), float(s.get("compression_ratio", 1.0)), [w for w in words if w.text]))
     except (OSError, ValueError, TypeError, KeyError, AttributeError) as e:

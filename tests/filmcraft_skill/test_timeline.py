@@ -167,3 +167,8 @@ def test_drop_frame_timecode_reads_back_to_the_frame_it_names():
     assert r.frame_of_timecode("00:01:00;02", drop=True) == 1800
     assert r.frame_of_timecode("00:00:03:00", drop=False) == 90
     assert all(r.frame_of_timecode(r.timecode(f, drop=True), drop=True) == f for f in range(0, 40000, 37))
+
+
+def test_three_digit_frame_fields_at_120_fps_read_back():
+    for rate, drop in ((timecode.Rate(120000, 1001), True), (timecode.Rate(120), False)):
+        assert all(rate.frame_of_timecode(rate.timecode(f, drop=drop), drop=drop) == f for f in range(0, 30000, 113))

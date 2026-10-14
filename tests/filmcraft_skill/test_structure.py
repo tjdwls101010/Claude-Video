@@ -134,12 +134,15 @@ def check_interfaces(scripts: Path, tests: Path | None) -> list[str]:
 
 
 def check_attribute_reach(scripts: Path, tests: Path | None) -> list[str]:
-    """`from filmcraft import ffmpeg` then `ffmpeg.extract.extract_frame(...)` reaches past the interface as surely as importing `filmcraft.ffmpeg.extract`."""
+    """An attribute taken from another unit, through any binding (`from filmcraft import qc` then `qc.x`, `import filmcraft as fc` then `fc.qc.x`), must be in that unit's `__all__` (or, for a plain module, not start with `_`): `ffmpeg.extract.extract_frame` reaches past the interface as surely as importing `filmcraft.ffmpeg.extract`."""
     package = scripts / PKG
-    units = {p.parent.name for p in package.glob("*/__init__.py")}
-    # an inner module's name is fine when the interface exports something by that name (ffmpeg.probe is the function)
-    inner = {u: {p.stem if p.is_file() else p.name for p in (package / u).iterdir() if p.name not in ("__init__.py", "__pycache__") and (p.suffix == ".py" or p.is_dir())}
-                - (declared_all(package / u / "__init__.py") or set()) for u in units}
+    units = {unit_of(p, package) for p in py_files(package)} - {"__init__"}
+    subs = {p.parent.name for p in package.glob("*/__init__.py")}
+    exported = {u: (declared_all(package / u / "__init__.py") or set()) for u in subs}
+
+    def allowed(unit: str, attr: str) -> bool:
+        return attr in exported[unit] if unit in subs else not attr.startswith("_")
+
     files = [(p, unit_of(p, package)) for p in py_files(package)] + [(scripts / "cli.py", None)] + ([(p, None) for p in py_files(tests)] if tests else [])
     out = []
     for p, own in files:
@@ -147,20 +150,32 @@ def check_attribute_reach(scripts: Path, tests: Path | None) -> list[str]:
             continue
         tree = ast.parse(p.read_text())
         bound: dict[str, str] = {}
+        roots: set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module == PKG and not node.level:
-                bound.update({(a.asname or a.name): a.name for a in node.names if a.name in inner})
+                bound.update({(a.asname or a.name): a.name for a in node.names if a.name in units})
             elif isinstance(node, ast.Import):
-                bound.update({a.asname: a.name.split(".")[1] for a in node.names if a.asname and a.name.count(".") == 1 and a.name.startswith(PKG + ".") and a.name.split(".")[1] in inner})
+                for a in node.names:
+                    parts = a.name.split(".")
+                    if a.name == PKG:
+                        roots.add(a.asname or PKG)
+                    elif len(parts) == 2 and parts[0] == PKG and parts[1] in units:
+                        if a.asname:
+                            bound[a.asname] = parts[1]
+                        else:
+                            roots.add(PKG)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Attribute):
                 continue
             base = node.value
-            if isinstance(base, ast.Name) and base.id in bound and bound[base.id] != own and node.attr in inner[bound[base.id]]:
-                out.append(f"{p}:{node.lineno} reaches past the interface: {base.id}.{node.attr}")
-            if (isinstance(base, ast.Attribute) and isinstance(base.value, ast.Name) and base.value.id == PKG and base.attr in inner
-                    and base.attr != own and node.attr in inner[base.attr]):
-                out.append(f"{p}:{node.lineno} reaches past the interface: {PKG}.{base.attr}.{node.attr}")
+            if isinstance(base, ast.Name) and base.id in bound:
+                unit, chain = bound[base.id], f"{base.id}.{node.attr}"
+            elif isinstance(base, ast.Attribute) and isinstance(base.value, ast.Name) and base.value.id in roots and base.attr in units:
+                unit, chain = base.attr, f"{base.value.id}.{base.attr}.{node.attr}"
+            else:
+                continue
+            if unit != own and not allowed(unit, node.attr):
+                out.append(f"{p}:{node.lineno} reaches past the interface: {chain}")
     return out
 
 
@@ -226,6 +241,8 @@ def test_clean_tree_passes(tmp_path):
     ({"cli.py": "from filmcraft.qc import helper\n"}, "qc.helper is not in __all__"),
     ({"cli.py": "from filmcraft import qc\nqc.bands.x()\n", f"{PKG}/qc/bands.py": "def x(): pass\n"}, "reaches past the interface: qc.bands"),
     ({"cli.py": "import filmcraft\nfilmcraft.qc.bands.x()\n", f"{PKG}/qc/bands.py": "def x(): pass\n"}, "reaches past the interface: filmcraft.qc.bands"),
+    ({"cli.py": "import filmcraft as fc\nfc.qc.bands.x()\n", f"{PKG}/qc/bands.py": "def x(): pass\n"}, "reaches past the interface: fc.qc.bands"),
+    ({"cli.py": "from filmcraft import qc\nqc.measure(None)\n", f"{PKG}/qc/__init__.py": "from .judge import judge\n__all__ = ['judge']\ndef measure(x): pass\n"}, "reaches past the interface: qc.measure"),
     ({"cli.py": "from filmcraft.timecode import _private\n"}, "timecode._private is private"),
     ({f"{PKG}/qc/__init__.py": "from .judge import judge\n"}, "has no literal __all__"),
     ({f"{PKG}/qc/judge.py": "from ..ffmpeg import probe\n"}, "relative import leaves its unit"),

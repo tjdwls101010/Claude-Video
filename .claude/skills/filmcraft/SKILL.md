@@ -67,9 +67,9 @@ FilmCraft exposes about 700 commands; `filmcraft-cli commands <filter>` and `fil
 
 ## What does not depend on taste
 
-- Never cut inside a word: cut in the silence at a word boundary, with a few frames of audio crossfade so the cut does not click.
+- A cut that lands inside a word, or clicks, is a defect unless it is the effect wanted (a stutter edit): cut in the silence at a word boundary, and a few frames of audio crossfade take out the click.
 - Text on screen must be right. Correct misheard names and terms before captions: a wrong name burned into a published video stays wrong. When unsure, keep your best guess and list it for the user.
-- Never splice speech into something the speaker did not mean; a summary keeps each question with its answer.
+- Never splice speech into something the speaker did not mean. An answer shown without its question can read as answering something else; keep the question when it does.
 - Check for text collisions before showing anything: captions over burned-in subtitles or broadcast supers, titles or faces under platform UI. How to resolve one (move, restyle, crop, cover) is a choice to offer.
 - Where speech is meant to be understood, music and effects sit under it.
 
@@ -89,7 +89,7 @@ When: talking heads, interviews, lectures, meetings, summaries, anything caption
 When: captions, titles, lower thirds, any text layer.
 
 - The default font, Inter, has no Hangul: Korean draws as boxes. Set an installed Korean family (`fonts.list`; Apple SD Gothic Neo, Noto Sans KR) on every caption track and text layer, then look at a render.
-- Caption `size` is relative to a 1080-line frame, so the same size is 1.78 times taller at 1080×1920. `captions` accounts for it; a style set by hand does not.
+- Caption `size` is relative to a 1080-line frame, so a size that looks right in landscape is far bigger in a vertical frame. `captions` accounts for it; a style set by hand does not.
 
 ## Changing the frame shape
 
@@ -121,7 +121,7 @@ When: a grade is asked for, or the picture is clearly off (log footage, a colour
 ## Delivery
 
 - Every export: `range: "entire"` (the default is In to Out), `burnCaptions` and `captionSidecar` as intended, loudness at the qc target, `"wait": true` under `exec`.
-- Loudness: `loudnessLufs` normalises (BS.1770) under a −2 dBTP limiter, so a peaky mix lands short of −14. `settings: {"effects": {"loudness": {"enabled": true, "target_lufs": -14, "true_peak_dbtp": -1}}}` sets the −1 dBTP ceiling qc allows; it is also the only form `export --settings` accepts (a top-level `loudnessLufs` there is refused).
+- Loudness: `loudnessLufs` normalises (BS.1770) under a −2 dBTP limiter, so a peaky mix can land short of its target. The ceiling is `true_peak_dbtp` in `settings.effects.loudness`, which is also the only form `export --settings` accepts (a top-level `loudnessLufs` there is refused).
 - Presets: "YouTube 1080p Full HD" for YouTube, "Social Vertical 1080×1920" for vertical. `hardwareEncoding: "auto"` is much faster (not with CRF or 2-pass); H.265 needs hardware encoding, and there is no AV1 export.
 - Offline media renders as placeholder frames: fix it with `media.findMissing`; never `--allow-offline` a deliverable.
 - Then `qc FILE --target …`. When it warns `moov_position`, the faststart remux above, and nothing else: the edit list stays.

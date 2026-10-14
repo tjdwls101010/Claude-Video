@@ -18,7 +18,7 @@ from .zones import HELP_TABLE, SAFE_ZONES
 __all__ = ["sheet", "SAFE_ZONES", "HELP_TABLE", "MAX_FRAMES"]
 
 MAX_FRAMES = 100
-_TC = re.compile(r"^\d+:\d{2}:\d{2}[:;]\d{2}$")
+_TC = re.compile(r"^\d+:\d{2}:\d{2}[:;]\d{2,3}$")
 
 
 def _frame_of(value: str, rate: Rate, drop: bool) -> int:

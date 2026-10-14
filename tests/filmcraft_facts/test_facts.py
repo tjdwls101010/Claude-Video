@@ -177,7 +177,7 @@ def test_05_default_caption_font_is_inter_and_has_no_hangul(tmp_path):
 
 
 def test_12_caption_size_scales_with_frame_height(tmp_path):
-    """SKILL.md › On-screen text: caption `size` is relative to a 1080-line frame, so the same size is 1920/1080 = 1.78 times taller in a 1080x1920 frame."""
+    """SKILL.md › On-screen text: caption `size` is relative to a 1080-line frame, so the same size is 1920/1080 = 1.78 times taller in a 1080x1920 frame (\"far bigger in a vertical frame\")."""
     srt = "1\n00:00:01,000 --> 00:00:03,000\n자막\n"
     hs = {}
     for size in ("1920x1080", "1080x1920"):
@@ -247,7 +247,7 @@ def test_18_headless_export_without_wait_writes_nothing(proj):
 
 
 def test_19_loudness_normalisation_limits_true_peak_at_minus_2_unless_told(tmp_path):
-    """SKILL.md › Delivery: loudnessLufs normalises under a -2 dBTP limiter, so a peaky mix can fall short of -14; `settings.effects.loudness` (also accepted by `export --settings`) sets the target and a -1 dBTP ceiling. `export --settings` refuses a top-level loudnessLufs."""
+    """SKILL.md › Delivery: loudnessLufs normalises under a -2 dBTP limiter, so a peaky mix can land short; `settings.effects.loudness` (the form `export --settings` accepts) sets the target and the ceiling. `export --settings` refuses a top-level loudnessLufs."""
     wave = "0.7*sin(2*PI*60*t)*exp(-25*mod(t\\,0.5))+0.15*sin(2*PI*440*t)*exp(-8*mod(t\\,0.5))"
     ffmpeg("-f", "lavfi", "-i", "color=c=gray:s=320x180:r=30:d=8", "-f", "lavfi", "-i", f"aevalsrc={wave}|{wave}:s=48000:d=8",
            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(tmp_path / "kick.mp4"))

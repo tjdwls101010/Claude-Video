@@ -51,9 +51,9 @@ def judge(m: Measurements, target: str, expect_size: tuple[int, int] | None = No
         add("video_codec", m.video_codec, "h264", None, None if m.video_codec is None else m.video_codec == "h264")
         add("video_profile", m.video_profile, "High", None, None if m.video_profile is None else m.video_profile == "High")
         size = f"{m.width}x{m.height}" if m.width else None
-        want = expect_size or lim.get("size")
-        if want:
-            add("size", size, f"{want[0]}x{want[1]}", None, size == f"{want[0]}x{want[1]}", level="fail")
+        wants = sorted({f"{w}x{h}" for w, h in (x for x in (expect_size, lim.get("size")) if x)})
+        if wants:
+            add("size", size, " and ".join(wants), None, None if size is None else all(size == w for w in wants), level="fail")
         else:
             add("size", size, None, None, True, level="info")
         if expect_fps is not None:

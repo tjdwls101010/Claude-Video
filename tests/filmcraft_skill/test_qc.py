@@ -199,3 +199,9 @@ def test_the_users_own_loudness_target_replaces_the_default(tmp_path):
     code, out = run_qc(f, "youtube", "--lufs", "-18")
     assert code == 0 and "integrated_loudness" not in out["failed"] + out["warnings"]
     assert check(out, "integrated_loudness")["expected"] == -18.0
+
+
+def test_an_expected_size_does_not_lift_the_targets_size(tmp_path):
+    f = av(tmp_path / "wide.mp4")
+    code, out = run_qc(f, "shorts", "--expect-size", "1920x1080")
+    assert code == 3 and "size" in out["failed"]

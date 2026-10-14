@@ -30,6 +30,10 @@ class VideoStream:
     transfer: str | None
     primaries: str | None
     rotation: int = 0
+    color_space: str | None = None
+    color_range: str | None = None
+    frames: int | None = None          # the container's frame count, when it records one (MOV does)
+    has_alpha: bool = False
 
     @property
     def display_size(self) -> tuple[int, int]:
@@ -43,6 +47,7 @@ class AudioStream:
     profile: str | None
     sample_rate: int | None
     channels: int | None
+    samples: int | None = None         # length in samples, when the stream's time base is one sample
 
 
 @dataclass
@@ -60,6 +65,15 @@ def _fraction(text: str | None) -> Fraction | None:
     except (ValueError, ZeroDivisionError):
         return None
     return f if f else None
+
+
+def _has_alpha(pix_fmt: str | None) -> bool:
+    return bool(pix_fmt) and pix_fmt.startswith(("yuva", "rgba", "bgra", "argb", "abgr", "gbrap", "ya"))
+
+
+def _samples(s: dict) -> int | None:
+    rate, tb, ts = s.get("sample_rate"), _fraction(s.get("time_base")), s.get("duration_ts")
+    return int(ts) if rate and tb == Fraction(1, int(rate)) and ts is not None else None
 
 
 def probe(path: Path) -> Media:
@@ -83,8 +97,10 @@ def probe(path: Path) -> Media:
                 codec=s.get("codec_name") or "", profile=s.get("profile"), width=int(s.get("width") or 0), height=int(s.get("height") or 0),
                 fps=_fraction(s.get("avg_frame_rate")) or _fraction(s.get("r_frame_rate")), pix_fmt=s.get("pix_fmt"),
                 transfer=s.get("color_transfer"), primaries=s.get("color_primaries"), rotation=rot,
+                color_space=s.get("color_space"), color_range=s.get("color_range"),
+                frames=int(s["nb_frames"]) if str(s.get("nb_frames", "")).isdigit() else None, has_alpha=_has_alpha(s.get("pix_fmt")),
             ))
         elif s.get("codec_type") == "audio":
             m.audio.append(AudioStream(codec=s.get("codec_name") or "", profile=s.get("profile"),
-                                       sample_rate=int(s["sample_rate"]) if s.get("sample_rate") else None, channels=s.get("channels")))
+                                       sample_rate=int(s["sample_rate"]) if s.get("sample_rate") else None, channels=s.get("channels"), samples=_samples(s)))
     return m

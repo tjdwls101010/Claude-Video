@@ -325,12 +325,14 @@ def test_fonts_report_the_face_that_drew_and_flag_substitutes(tmp_path):
 
 def test_a_script_neither_probe_face_covers_is_still_checked(tmp_path):
     """Arabic: neither Hangul probe face has it, so a missing family and the face that stands in for it look alike to the two-probe check; a family named for the face that draws it is no substitution."""
-    body = """<p style="font-family:'NoSuchArabicFamily'">مرحبا</p><p style="font-family:'Geeza Pro'">مرحبا بكم</p>"""
+    body = """<style>@font-face{font-family:Paperish;src:local('AppleSDGothicNeo-Regular')}</style>
+<p style="font-family:'NoSuchArabicFamily'">مرحبا</p><p style="font-family:'Geeza Pro'">مرحبا بكم</p><p style="font-family:Paperish">مرحبا</p>"""
     code, out, raw, err = graphic(tmp_path, str(page(tmp_path, body)), "--out", str(tmp_path / "g.png"), "--size", "320x180", "--fps", "30")
     assert code == 0, raw + err
     fonts = {f["family"]: f for f in out["fonts"]}
     assert fonts["NoSuchArabicFamily"]["fallback"] is True
     assert fonts["Geeza Pro"]["fallback"] is False
+    assert fonts["Paperish"]["fallback"] is True                                # a loaded web font without Arabic: another face drew it
 
 
 def test_an_apostrophe_in_the_path_survives_the_shell(tmp_path):

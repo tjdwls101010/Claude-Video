@@ -92,6 +92,7 @@ def sample(page, cdp) -> list[dict]:
             fallback = it in probed and len(used) > 1
             if not fallback and it in probed:
                 a, b, without = ([f["postScriptName"] for f in _faces(cdp, root, f'[data-video-probe="{it["id"]}-{i}"]')] for i in range(3))
+                # 성진: a page's @font-face alias of a system face (local()) is reported under the system name and reads as a fallback here; trusting any loaded @font-face instead would hide a web font that lacks the text's script, which is worse. Revisit if DevTools starts reporting which @font-face drew a node.
                 named = any(it["first"].lower() in f["familyName"].lower() for f in used)
                 fallback = a != b or [f["postScriptName"] for f in used] != a or (without == a and not named)
             out.append({"family": it["first"], "faces": faces, "fallback": fallback, "text": " ".join(it["text"].split())[:40]})

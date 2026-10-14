@@ -9,7 +9,7 @@ from pathlib import Path
 
 from video import ffmpeg
 from video.errors import InputError
-from video.filmcraft_cli import Source, read_sequence, render
+from video.filmcraft import Source, read_sequence, render
 from video.timecode import Rate
 
 from .sheet import compose

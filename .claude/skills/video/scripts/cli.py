@@ -14,7 +14,7 @@ from pathlib import Path
 
 from video import captions, frames, qc, timeline, transcribe
 from video.errors import InputError, ToolError
-from video.filmcraft_cli import Source
+from video.filmcraft import Source
 
 EXIT_OK, EXIT_TOOL, EXIT_USAGE, EXIT_QC_FAIL = 0, 1, 2, 3
 

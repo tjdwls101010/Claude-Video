@@ -113,7 +113,7 @@ uv run .claude/skills/video/scripts/cli.py frames --project out/edit.fcproj --cu
     ├── cli.py               유일한 진입점(파서·도움말·종료 코드)
     └── video/               유일한 패키지
         ├── transcribe/ captions/ timeline/ frames/ qc/   기능
-        ├── filmcraft_cli/ whisper/ ffmpeg/ mp4/          외부 시스템·형식
+        ├── filmcraft/ whisper/ ffmpeg/ mp4/              외부 시스템·형식
         └── timecode.py errors.py                         공용
 tests/
 ├── video_skill/             번들 도구 테스트(명령 프로토콜, 순수 코어, 구조 규칙)

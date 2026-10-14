@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from video.filmcraft_cli import Sequence, Source, read_sequence
+from video.filmcraft import Sequence, Source, read_sequence
 from video.timecode import seconds
 
 __all__ = ["summarize", "detail", "report"]

@@ -7,7 +7,7 @@ from fractions import Fraction
 from pathlib import Path
 
 from video.errors import InputError
-from video.filmcraft_cli import Source, read_words
+from video.filmcraft import Source, read_words
 from video.timecode import Rate, seconds
 
 from . import srt

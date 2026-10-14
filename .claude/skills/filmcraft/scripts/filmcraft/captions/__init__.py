@@ -52,7 +52,8 @@ def make(out: Path, *, project: Path | None = None, bridge: str | None = None, c
     fr = Fraction(rate.num, rate.den)
     result = layout(words, rules, fr, m.fits) if cues_file is None else relayout(srt.read(cues_file), rules, fr, m.fits)
     srt.write(result, out)
-    where = f"--project {shlex.quote(str(project))}" if project is not None else f"--bridge {shlex.quote(bridge)}" if bridge else "--project <P.fcproj>"
+    # in the app, the edit lands in the open project and saving it stays the user's call (an untitled project would open a save dialog)
+    where = f"--project {shlex.quote(str(project))} --save" if project is not None else f"--bridge {shlex.quote(bridge)}" if bridge else "--project <P.fcproj> --save"
     style_args = " ".join(f"{k}={shlex.quote(str(v))}" for k, v in style.items())
     return {
         "cues": len(result),
@@ -62,6 +63,6 @@ def make(out: Path, *, project: Path | None = None, bridge: str | None = None, c
         "violations": violations(result, rules, m.fits),
         "out": str(out),
         "notes": notes,
-        "next": [f"filmcraft-cli {where} --save exec captions.import path={shlex.quote(str(out))}",
-                 f"filmcraft-cli {where} --save exec captions.setStyle track=<track from the import result> {style_args}"],
+        "next": [f"filmcraft-cli {where} exec captions.import path={shlex.quote(str(out))}",
+                 f"filmcraft-cli {where} exec captions.setStyle track=<track from the import result> {style_args}"],
     }

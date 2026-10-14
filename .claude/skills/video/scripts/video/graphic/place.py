@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shlex
 from pathlib import Path
 
@@ -56,6 +57,10 @@ def next_steps(out: Path, kind: str, audio: bool, source: Source | None, sequenc
             result["if_placed"] = (f"This render changed {', '.join(changed)} from the file it replaced, and a clip already placed from that file keeps what FilmCraft read at import "
                                    "(the old length, holding its last frame; the old sound clip or none). If it is placed, clear that clip and its sound clip first "
                                    "(exec edit.clear '{\"clips\":[...]}'; `timeline` lists clip ids), then run the steps. If it is not placed yet, just run them.")
+        elif source is not None and source.bridge is not None:
+            result["if_placed"] = ("Same length, sound, size and rate as the file it replaced. If that file is already placed, the running app keeps showing the render it opened until it is relinked: "
+                                   f"filmcraft-cli --bridge {q(str(source.bridge))} exec media.replaceFootage '{{\"item\":<placed item>,\"path\":{json.dumps(str(out), ensure_ascii=False)}}}' "
+                                   "(<placed item>: the project item of the placed clip, `item` in `timeline`'s detail; media.refreshChanged is not enough). If not placed yet, run the steps.")
         else:
             result["if_placed"] = "Same length, sound, size and rate as the file it replaced: if that file is already placed, the clip now plays this render and nothing else is needed. If not, run the steps."
     return result

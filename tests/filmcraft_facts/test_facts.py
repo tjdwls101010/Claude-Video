@@ -1,4 +1,4 @@
-"""FilmCraft behaviour the skill's prose relies on, checked against the installed filmcraft-cli. FilmCraft ships every day or two; when one of these fails after an update, the SKILL.md sentence named in its docstring is the one to rewrite (or delete), not the test to loosen.
+"""FilmCraft behaviour the skill's prose relies on, checked against the installed filmcraft-cli. FilmCraft ships every day or two; when one of these fails after an update, the SKILL.md sentence (or `graphic --help` passage) named in its docstring is the one to rewrite (or delete), not the test to loosen.
 
 Run after an update: `uv run --with pytest --with pillow pytest tests/filmcraft_facts`."""
 
@@ -6,13 +6,15 @@ from __future__ import annotations
 
 import json
 import math
+import re
+import subprocess
 from fractions import Fraction
 
 import pytest
 from PIL import Image
 
 from video import ffmpeg as ff, mp4
-from support import TICKS, fc, fc_json, fc_run, ffmpeg, make_av, needs_ffmpeg, needs_filmcraft
+from support import FFMPEG, TICKS, fc, fc_json, fc_run, ffmpeg, make_av, needs_ffmpeg, needs_filmcraft
 
 pytestmark = [needs_filmcraft, needs_ffmpeg]
 
@@ -265,3 +267,183 @@ def test_19_loudness_normalisation_limits_true_peak_at_minus_2_unless_told(tmp_p
     # the limiter holds its ceiling on PCM; the AAC encode is what adds true peak above it
     fc("exec", "file.exportMedia", json.dumps({"path": str(tmp_path / "c.wav"), "format": "wav", "range": "entire", "loudnessLufs": -14, "wait": True}), project=p, cwd=tmp_path)
     assert ff.loudness(tmp_path / "c.wav").true_peak <= -1.9
+
+
+# -- Graphics ------------------------------------------------------------------------------------------------------------
+
+def srgb_to_linear(v: float) -> float:
+    """IEC 61966-2-1 decoding, 0–255 code value to linear light 0–1."""
+    c = v / 255
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def linear_to_srgb(l: float) -> float:
+    c = 12.92 * l if l <= 0.0031308 else 1.055 * l ** (1 / 2.4) - 0.055
+    return c * 255
+
+
+def prores_4444(path, seconds, color="red@0.5", size="640x360", tone_hz=None, rate="30"):
+    """A straight-alpha ProRes 4444 MOV like the ones `graphic` writes, optionally with a sine (amplitude 1/8) as 48 kHz PCM."""
+    args = ["-f", "lavfi", "-i", f"color=c={color}:s={size}:r={rate}:d={seconds},format=rgba"]
+    if tone_hz:
+        args += ["-f", "lavfi", "-i", f"sine=frequency={tone_hz}:sample_rate=48000:duration={seconds}", "-c:a", "pcm_s16le", "-shortest"]
+    ffmpeg(*args, "-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", str(path))
+    return path
+
+
+def tracks(p, d) -> dict:
+    """{"V1": [(name, start_s, end_s)], "A1": [...]} for the active sequence."""
+    s = seq(p, d)
+    return {f"{k[0].upper()}{i + 1}": [(c["name"], round(c["start"] / TICKS, 3), round(c["end"] / TICKS, 3)) for c in t["items"]]
+            for k in ("video", "audio") for i, t in enumerate(s[k])}
+
+
+def peak_db(path, start, seconds) -> float:
+    """Sample peak in dBFS of [start, start + seconds) (ffmpeg volumedetect); -91 stands for digital silence."""
+    r = subprocess.run([FFMPEG, "-v", "info", "-ss", str(start), "-t", str(seconds), "-i", str(path), "-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True, timeout=120)
+    m = re.search(r"max_volume: (-?[\d.]+|-inf) dB", r.stderr)
+    return -91.0 if m is None or m.group(1) == "-inf" else float(m.group(1))
+
+
+def centre(png) -> tuple:
+    img = Image.open(png).convert("RGB")
+    return img.getpixel((img.width // 2, img.height // 2))
+
+
+def test_20_compositing_is_in_linear_light(tmp_path):
+    """SKILL.md › Graphics and motion graphics: FilmCraft composites in linear light, so a partly transparent layer comes out lighter over a dark picture than in a browser or an ffmpeg (sRGB) blend; judge how a graphic sits from a FilmCraft render. Expected: 50 % red over the measured background, blended in linear light by the sRGB transfer function (an sRGB blend would give about (128, 0, 127))."""
+    ffmpeg("-f", "lavfi", "-i", "color=c=0x0000ff:s=640x360:r=30:d=4", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", str(tmp_path / "blue.mp4"))
+    Image.new("RGBA", (640, 360), (255, 0, 0, 128)).save(tmp_path / "red50.png")
+    p = tmp_path / "p.fcproj"
+    fc("--save-as", str(p), "import", str(tmp_path / "blue.mp4"), str(tmp_path / "red50.png"), cwd=tmp_path)
+    fc("--save", "exec", "file.newSequenceFromClip", "items=[1]", project=p, cwd=tmp_path)
+    fc("render", "--seconds", "1", "--out", str(tmp_path / "bg.png"), project=p, cwd=tmp_path)
+    fc_run([{"id": "timeline.place", "params": {"item": 2, "track": "new", "seconds": 0, "duration": 4 * TICKS}}], p, cwd=tmp_path)
+    fc("render", "--seconds", "1", "--out", str(tmp_path / "r.png"), project=p, cwd=tmp_path)
+    a = 128 / 255
+    expected = [linear_to_srgb(a * srgb_to_linear(fg) + (1 - a) * srgb_to_linear(bg)) for fg, bg in zip((255, 0, 0), centre(tmp_path / "bg.png"))]
+    got = centre(tmp_path / "r.png")
+    assert all(abs(g - e) <= 2 for g, e in zip(got, expected)), (got, expected)
+    assert got[0] > 128 + 40  # far from the sRGB blend
+
+
+def test_21_placing_media_with_sound_overwrites_the_targeted_audio_track(tmp_path):
+    """SKILL.md › How the CLI fails quietly: `timeline.place` puts a clip's sound on the targeted audio track (A1 by default), overwriting the speech there, unless `audioTrack` names another; `"audioTrack": "new"` leaves A1 whole, and `graphics.newFromFile` places the picture without its sound."""
+    make_av(tmp_path / "talk.mp4", 4, rate="30", size="640x360")
+    prores_4444(tmp_path / "g.mov", 3, tone_hz=1000)
+
+    def setup(name):
+        p = tmp_path / f"{name}.fcproj"
+        fc("--save-as", str(p), "import", str(tmp_path / "talk.mp4"), str(tmp_path / "g.mov"), cwd=tmp_path)
+        fc("--save", "exec", "file.newSequenceFromClip", "items=[1]", project=p, cwd=tmp_path)
+        return p
+
+    p = setup("default")
+    fc_run([{"id": "timeline.place", "params": {"item": 2, "track": "new", "seconds": 0.5}}], p, cwd=tmp_path)
+    t = tracks(p, tmp_path)
+    assert t["V2"] == [("g.mov", 0.5, 3.5)]
+    assert t["A1"] == [("talk.mp4", 0.0, 0.5), ("g.mov", 0.5, 3.5), ("talk.mp4", 3.5, 4.0)]
+
+    p = setup("new_audio")
+    fc_run([{"id": "timeline.place", "params": {"item": 2, "track": "new", "audioTrack": "new", "seconds": 0.5}}], p, cwd=tmp_path)
+    t = tracks(p, tmp_path)
+    assert t["A1"] == [("talk.mp4", 0.0, 4.0)] and t["A2"] == [("g.mov", 0.5, 3.5)]
+
+    p = setup("graphics")
+    fc_run([{"id": "graphics.newFromFile", "params": {"path": str(tmp_path / "g.mov"), "time": TICKS // 2}}], p, cwd=tmp_path)
+    t = tracks(p, tmp_path)
+    assert t["V2"] == [("g.mov", 0.5, 3.5)] and t["A1"] == [("talk.mp4", 0.0, 4.0)] and "A2" not in t
+
+
+def test_22_a_file_rewritten_at_the_same_path_is_read_anew(tmp_path):
+    """SKILL.md › Graphics and motion graphics: re-render a graphic to the same path and the project plays the new render; headless `render` and `export` read the file as it is now, not a cached copy."""
+    ffmpeg("-f", "lavfi", "-i", "color=c=black:s=640x360:r=30:d=3", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(tmp_path / "bg.mp4"))
+    prores_4444(tmp_path / "g.mov", 2, color="0x2030C0")
+    p = tmp_path / "p.fcproj"
+    fc("--save-as", str(p), "import", str(tmp_path / "bg.mp4"), str(tmp_path / "g.mov"), cwd=tmp_path)
+    fc("--save", "exec", "file.newSequenceFromClip", "items=[1]", project=p, cwd=tmp_path)
+    fc_run([{"id": "timeline.place", "params": {"item": 2, "track": "new", "audioTrack": "new", "seconds": 0}}], p, cwd=tmp_path)
+    fc("render", "--seconds", "1", "--out", str(tmp_path / "a.png"), project=p, cwd=tmp_path)
+    prores_4444(tmp_path / "g.mov", 2, color="0xC80000")
+    fc("render", "--seconds", "1", "--out", str(tmp_path / "b.png"), project=p, cwd=tmp_path)
+    a, b = centre(tmp_path / "a.png"), centre(tmp_path / "b.png")
+    assert a[2] > 150 and a[0] < 60
+    assert b[0] > 150 and b[2] < 60
+    fc("export", str(tmp_path / "e.mp4"), "--range", "entire", project=p, cwd=tmp_path)
+    ff.extract_frame(tmp_path / "e.mp4", 1.0, tmp_path / "e.png", 640)
+    e = centre(tmp_path / "e.png")
+    assert e[0] > 150 and e[2] < 60
+
+
+def test_23_a_placed_clip_keeps_the_length_and_streams_read_at_import(tmp_path):
+    """`graphic --help` and its `next` (re-placing after a re-render): the project keeps the length and sound streams it read when the file was imported. Rewritten at the same path, a longer render still plays only the old length, a shorter one holds its last frame to the old end with its sound silent there, sound added to a silent render is not heard (no sound clip was made), and a render that lost its sound plays silence; `media.refreshChanged` changes none of it. So a placed render whose length or sound changed is cleared and placed again."""
+    ffmpeg("-f", "lavfi", "-i", "color=c=black:s=640x360:r=30:d=6", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(tmp_path / "bg.mp4"))
+
+    def place(name, seconds, tone):
+        g = prores_4444(tmp_path / f"{name}.mov", seconds, color="red", tone_hz=1000 if tone else None)
+        p = tmp_path / f"{name}.fcproj"
+        fc("--save-as", str(p), "import", str(tmp_path / "bg.mp4"), str(g), cwd=tmp_path)
+        fc("--save", "exec", "file.newSequenceFromClip", "items=[1]", project=p, cwd=tmp_path)
+        fc_run([{"id": "timeline.place", "params": {"item": 2, "track": "new", "audioTrack": "new", "seconds": 1}}], p, cwd=tmp_path)
+        return g, p
+
+    def tone_peak(p, name, start):
+        out = tmp_path / f"{name}.wav"
+        fc("exec", "file.exportMedia", json.dumps({"path": str(out), "format": "wav", "range": "entire", "wait": True}), project=p, cwd=tmp_path)
+        return peak_db(out, start, 0.4)
+
+    def lime_at(p, name, t):
+        fc("render", "--seconds", str(t), "--out", str(tmp_path / f"{name}{t}.png"), project=p, cwd=tmp_path)
+        r, g, b = centre(tmp_path / f"{name}{t}.png")
+        return g > 150 and r < 60
+
+    g, p = place("longer", 2, False)
+    prores_4444(g, 3, color="lime")
+    fc("--save", "exec", "media.refreshChanged", project=p, cwd=tmp_path)
+    assert tracks(p, tmp_path)["V2"] == [("longer.mov", 1.0, 3.0)]
+    assert lime_at(p, "longer", 2.5) and not lime_at(p, "longer", 3.5)
+
+    g, p = place("shorter", 3, True)
+    prores_4444(g, 1, color="lime", tone_hz=1000)
+    assert tracks(p, tmp_path)["V2"] == [("shorter.mov", 1.0, 4.0)] and tracks(p, tmp_path)["A2"] == [("shorter.mov", 1.0, 4.0)]
+    assert lime_at(p, "shorter", 3.5)                                   # the last frame holds to the old end
+    assert tone_peak(p, "shorter_in", 1.2) > -25 and tone_peak(p, "shorter_past", 2.5) < -60
+
+    g, p = place("gained", 3, False)
+    prores_4444(g, 3, color="lime", tone_hz=1000)
+    assert "A2" not in tracks(p, tmp_path)
+    assert tone_peak(p, "gained", 1.2) < -60
+
+    g, p = place("lost", 3, True)
+    prores_4444(g, 3, color="lime")
+    assert tracks(p, tmp_path)["A2"] == [("lost.mov", 1.0, 4.0)]
+    assert tone_peak(p, "lost", 1.2) < -60
+
+
+def test_24_an_sdr_overlay_lands_at_reference_white_in_an_hdr_sequence(tmp_path):
+    """`graphic --help` (HDR sequences): in a Rec. 2100 HLG sequence FilmCraft converts a BT.709-tagged overlay like any SDR clip, placing SDR white at the HLG reference level (75 % signal, ITU-R BT.2408), so a render needs no HDR-specific encoding. Checked on the exported HLG master: the overlay's white and grey equal those of an SDR H.264 clip with the same values, and white is 75 % ± 2 %."""
+    # top half: an ordinary SDR clip with a white and a grey band; bottom half: an overlay with the same bands
+    ffmpeg("-f", "lavfi", "-i", "color=c=black:s=640x360:r=30:d=2", "-vf", "drawbox=x=0:y=0:w=320:h=180:c=white:t=fill,drawbox=x=320:y=0:w=320:h=180:c=0x808080:t=fill",
+           "-c:v", "libx264", "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", str(tmp_path / "sdr.mp4"))
+    img = Image.new("RGBA", (640, 360), (0, 0, 0, 0))
+    img.paste(Image.new("RGBA", (320, 180), (255, 255, 255, 255)), (0, 180))
+    img.paste(Image.new("RGBA", (320, 180), (128, 128, 128, 255)), (320, 180))
+    img.save(tmp_path / "o.png")
+    ffmpeg("-loop", "1", "-framerate", "30", "-i", str(tmp_path / "o.png"), "-t", "2",
+           "-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuva444p10le,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv",
+           "-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", str(tmp_path / "o.mov"))
+    p = tmp_path / "hlg.fcproj"
+    fc("--save-as", str(p), "import", str(tmp_path / "sdr.mp4"), str(tmp_path / "o.mov"), cwd=tmp_path)
+    fc("--save", "exec", "file.newSequenceFromClip", "items=[1]", project=p, cwd=tmp_path)
+    fc_run([{"id": "sequence.settings", "params": {"workingSpace": "rec2100-hlg"}}, {"id": "timeline.place", "params": {"item": 2, "track": "new", "audioTrack": "new", "seconds": 0}}], p, cwd=tmp_path)
+    out = tmp_path / "hlg.mov"
+    fc("exec", "file.exportMedia", json.dumps({"path": str(out), "format": "prores", "range": "entire", "wait": True}), project=p, cwd=tmp_path)
+    [v] = ff.probe(out).video
+    assert (v.transfer, v.primaries) == ("arib-std-b67", "bt2020")
+    ffmpeg("-ss", "1", "-i", str(out), "-frames:v", "1", "-pix_fmt", "rgb24", str(tmp_path / "hlg.png"))   # code values: matrix only, no transfer
+    px = Image.open(tmp_path / "hlg.png").convert("RGB")
+    clip_white, clip_grey = px.getpixel((160, 90)), px.getpixel((480, 90))
+    over_white, over_grey = px.getpixel((160, 270)), px.getpixel((480, 270))
+    assert all(abs(a - b) <= 2 for a, b in zip(clip_white, over_white)), (clip_white, over_white)
+    assert all(abs(a - b) <= 2 for a, b in zip(clip_grey, over_grey)), (clip_grey, over_grey)
+    assert over_white[1] / 255 == pytest.approx(0.75, abs=0.02)

@@ -134,7 +134,7 @@ When: a grade is asked for, or the picture is clearly off (log footage, a colour
 ## Delivery
 
 - Every export: `range: "entire"` (the default is In to Out), `burnCaptions` and `captionSidecar` as intended, loudness at the qc target, `"wait": true` under `exec`.
-- Loudness: `loudnessLufs` normalises (BS.1770) under a −2 dBTP limiter, so a peaky mix can land short of its target. The ceiling is `true_peak_dbtp` in `settings.effects.loudness`, which is also the only form `export --settings` accepts (a top-level `loudnessLufs` there is refused). AAC encoding can raise true peak above the ceiling, which is why qc measures the encoded file.
+- Loudness: `loudnessLufs` normalises (BS.1770) under a −2 dBTP limiter, so a peaky mix can land short of its target. The ceiling is `true_peak_dbtp` in `settings.effects.loudness` (with `"enabled": true`, or nothing is normalised), which is also the only form `export --settings` accepts (a top-level `loudnessLufs` there is refused). AAC encoding can raise true peak above the ceiling, which is why qc measures the encoded file.
 - Presets: "YouTube 1080p Full HD" for YouTube, "Social Vertical 1080×1920" for vertical. `hardwareEncoding: "auto"` is much faster (not with CRF or 2-pass); H.265 needs hardware encoding, and there is no AV1 export.
 - Offline media renders as placeholder frames: fix it with `media.findMissing`; never `--allow-offline` a deliverable.
 - Then `qc FILE --target …`. When it warns `moov_position`, the faststart remux above, and nothing else: the edit list stays.
@@ -142,7 +142,7 @@ When: a grade is asked for, or the picture is clearly off (log footage, a colour
 
 ## Working files
 
-- Every piece has the same shape, so a later session can find its way in: the project and its deliverables (the exported video, sidecar captions, handoff files) at the piece's root; `assets/` for material brought in (footage, music, logos, references; shared material from `data/assets/` is copied in with `cp -c`, a free clone on APFS, so the piece's folder alone opens the project); `graphics/` for pages and their renders, kept because the project plays them; `etc/` for the rest (other tools' files, transcripts and caption drafts worth keeping), with throwaway files such as frame sheets removed at the end. Write nothing outside the user's folders: a file in `/tmp` may be unreadable to you in a restricted session.
+- Every piece has the same shape, so a later session can find its way in: the project and its deliverables (the exported video, sidecar captions, handoff files) at the piece's root; `assets/` for material brought in (footage, music, logos, references), copied in with `cp -c` (a free clone on APFS) from wherever it came, `data/assets/` included, so the piece's folder alone opens the project; `graphics/` for pages and their renders, kept because the project plays them; `etc/` for the rest (other tools' files, transcripts and caption drafts worth keeping), with throwaway files such as frame sheets removed at the end. Write nothing outside the user's folders: a file in `/tmp` may be unreadable to you in a restricted session.
 - No global installs; tools run through `uv run` and `uvx`.
 - FilmCraft keeps `FilmCraft Previews/`, its render cache, next to every saved project with a sequence. It is not an output; say so rather than leaving the user to wonder.
 

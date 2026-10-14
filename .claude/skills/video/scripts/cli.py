@@ -37,7 +37,7 @@ QC_DESC = """\
 Measure a rendered file (ffprobe streams, BS.1770 loudness and true peak via ffmpeg ebur128, MP4 box layout) and judge it against one delivery target. Technical QC only: whether cuts land or meaning survived is not judged.
 Prints: {"file", "target", "pass", "failed": [check names], "warnings": [check names], "checks": [{name, value, expected, tolerance, level, pass, reason}]}. `pass` per check is true, false, or null when the value could not be measured (then `reason` says why).
 Exits: 0 nothing required failed (warnings allowed); 3 a required check failed, named in `failed`; 2 the file is missing or not media, or the command line must change; 1 ffmpeg/ffprobe is missing or failed.
-When a loudness fix is needed, re-export with the target (file.exportMedia loudnessLufs, or settings.effects.loudness with true_peak_dbtp -1, since the default limiter ceiling is -2 dBTP); the limiter wins over the integrated target, so a file that still misses after two re-exports is reported with its measurements instead of exported again.
+When a loudness fix is needed, re-export with the target: file.exportMedia loudnessLufs, whose -2 dBTP limiter ceiling leaves room for the true peak AAC adds (about 1 dB), or settings.effects.loudness {"enabled": true, "target_lufs", "true_peak_dbtp"} to move that ceiling (without enabled nothing is normalised, and a -1 ceiling can measure above -1 dBTP once encoded). The limiter wins over the integrated target, so a file that still misses after two re-exports is reported with its measurements instead of exported again.
 
 """
 

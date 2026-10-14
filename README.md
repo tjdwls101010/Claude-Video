@@ -2,8 +2,8 @@
 
 이 맥에 설치된 [FilmCraft](https://github.com/storytold/filmcraft)(어도비 프리미어 프로를 클론한 오픈소스 편집기)를 Claude Code가 직접 다루게 하는 프로젝트 스킬입니다. "이 영상으로 ○○ 만들어줘"라고 하면, Claude가 사용자와 의논하며 편집합니다. 결과물은 검수를 통과한 영상과, 사용자가 FilmCraft에서 다시 열어 고칠 수 있는 `.fcproj` 프로젝트입니다.
 
-- 스킬 본문: [`.claude/skills/filmcraft/SKILL.md`](.claude/skills/filmcraft/SKILL.md)(영어, 모델이 읽는 글)
-- 번들 도구: [`.claude/skills/filmcraft/scripts/cli.py`](.claude/skills/filmcraft/scripts/cli.py)
+- 스킬 본문: [`.claude/skills/video/SKILL.md`](.claude/skills/video/SKILL.md)(영어, 모델이 읽는 글)
+- 번들 도구: [`.claude/skills/video/scripts/cli.py`](.claude/skills/video/scripts/cli.py)
 - 개발 기록(대조 실험 수치, 버린 대안, 리뷰 내역): [PR #1](https://github.com/tjdwls101010/Claude-Video/pull/1)
 
 ## 무엇을 할 수 있나
@@ -54,7 +54,7 @@ install -m 755 "filmcraft-cli-$VER-macos-universal/filmcraft-cli" ~/.local/bin/f
 
 ## 쓰기
 
-이 레포에서 Claude Code를 열고 평소처럼 요청하면 `filmcraft` 스킬이 열립니다.
+이 레포에서 Claude Code를 열고 평소처럼 요청하면 `video` 스킬이 열립니다.
 
 - "`영상.mp4`에서 공백이랑 군더더기 잘라서 한국어 자막 넣고 유튜브용으로 뽑아줘"
 - "이 40분 대담에서 핵심만 5분으로 요약하고 한국어 번역 자막 달아줘"
@@ -72,7 +72,7 @@ open -a FilmCraft --args --control 9876
 
 ## 번들 도구
 
-FilmCraft에 없는 일만 합니다. 모두 `uv run .claude/skills/filmcraft/scripts/cli.py <명령>`으로 실행합니다. 각 `<명령> --help`가 인자, 출력(JSON 한 문서), 종료 코드, 기준 수치를 설명합니다.
+FilmCraft에 없는 일만 합니다. 모두 `uv run .claude/skills/video/scripts/cli.py <명령>`으로 실행합니다. 각 `<명령> --help`가 인자, 출력(JSON 한 문서), 종료 코드, 기준 수치를 설명합니다.
 
 | 명령 | 하는 일 |
 |---|---|
@@ -83,8 +83,8 @@ FilmCraft에 없는 일만 합니다. 모두 `uv run .claude/skills/filmcraft/sc
 | `qc` | 결과 파일을 대상별 기준으로 검수합니다. 기준표와 각 기준의 근거(규정/플랫폼 사양/측정/관행/결정)는 `qc --help`에 있습니다. 실패가 있으면 종료 코드 3입니다 |
 
 ```bash
-uv run .claude/skills/filmcraft/scripts/cli.py qc out/final.mp4 --target shorts
-uv run .claude/skills/filmcraft/scripts/cli.py frames --project out/edit.fcproj --cuts --overlay all --out sheet.png
+uv run .claude/skills/video/scripts/cli.py qc out/final.mp4 --target shorts
+uv run .claude/skills/video/scripts/cli.py frames --project out/edit.fcproj --cuts --overlay all --out sheet.png
 ```
 
 ## 스킬이 있을 때와 없을 때
@@ -107,23 +107,23 @@ uv run .claude/skills/filmcraft/scripts/cli.py frames --project out/edit.fcproj 
 ## 레포 구조
 
 ```
-.claude/skills/filmcraft/
+.claude/skills/video/
 ├── SKILL.md                 모델이 읽는 스킬 본문
 └── scripts/
     ├── cli.py               유일한 진입점(파서·도움말·종료 코드)
-    └── filmcraft/           유일한 패키지
+    └── video/               유일한 패키지
         ├── transcribe/ captions/ timeline/ frames/ qc/   기능
         ├── filmcraft_cli/ whisper/ ffmpeg/ mp4/          외부 시스템·형식
         └── timecode.py errors.py                         공용
 tests/
-├── filmcraft_skill/         번들 도구 테스트(명령 프로토콜, 순수 코어, 구조 규칙)
+├── video_skill/             번들 도구 테스트(명령 프로토콜, 순수 코어, 구조 규칙)
 ├── filmcraft_facts/         스킬이 기대는 FilmCraft 동작 19개
 └── support/                 테스트 공용 도우미
 .mcp.json                    실행 중인 앱용 브리지 MCP
 .tmp/filmcraft/              FilmCraft 0.7.2 소스(동작 확인용 참고)
 ```
 
-기능 유닛은 시스템 유닛과 공용 모듈만 가져다 쓰고, 유닛 밖에서는 `__init__.py`의 `__all__`만 씁니다. 이 규칙은 `tests/filmcraft_skill/test_structure.py`가 지킵니다.
+기능 유닛은 시스템 유닛과 공용 모듈만 가져다 쓰고, 유닛 밖에서는 `__init__.py`의 `__all__`만 씁니다. 이 규칙은 `tests/video_skill/test_structure.py`가 지킵니다.
 
 ## 테스트
 

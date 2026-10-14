@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
-SKILL_DIR = REPO / ".claude/skills/filmcraft"
+SKILL_DIR = REPO / ".claude/skills/video"
 CLI = SKILL_DIR / "scripts/cli.py"
 TICKS = 254_016_000_000
 

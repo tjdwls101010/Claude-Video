@@ -11,7 +11,7 @@ from fractions import Fraction
 import pytest
 from PIL import Image
 
-from filmcraft import ffmpeg as ff, mp4
+from video import ffmpeg as ff, mp4
 from support import TICKS, fc, fc_json, fc_run, ffmpeg, make_av, needs_ffmpeg, needs_filmcraft
 
 pytestmark = [needs_filmcraft, needs_ffmpeg]

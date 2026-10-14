@@ -502,3 +502,11 @@ def test_adding_sound_to_a_render_counts_as_a_change(tmp_path):
     code, out, raw, err = run(tone_page(tmp_path))
     assert code == 0, raw + err
     assert out["replaced"] == {"length_changed": False, "audio_changed": True, "size_changed": False, "fps_changed": False}
+
+
+def test_without_chrome_the_error_says_how_to_get_it(tmp_path, monkeypatch):
+    """A machine without Chrome, imitated by pointing VIDEO_CHROME_PATH at nothing: exit 1 at launch, and the way out names both installs and that the download is the user's to approve."""
+    monkeypatch.setenv("VIDEO_CHROME_PATH", str(tmp_path / "no-chrome"))
+    code, out, raw, err = graphic(tmp_path, str(page(tmp_path)), "--out", str(tmp_path / "g.png"), "--size", "64x64", "--fps", "30")
+    assert code == 1, raw + err
+    assert out["error"].startswith("launch:") and "Install Google Chrome" in out["error"] and "asking the user" in out["error"]

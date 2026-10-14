@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import shutil
 import sys
 from pathlib import Path
@@ -59,7 +60,7 @@ def transcribe(media: Path, item: int, out: Path, language: str | None = None, m
         "speech_seconds": round(sum(b - a for a, b in spans), 2), "snapped": report["snapped"], "unmatched": len(report["unmatched"]),
         "review": review[:REVIEW_SHOWN], "review_total": len(review),
         "out": str(out), "text": str(text_file), "whisper_json": str(source),
-        "next": f"filmcraft-cli --project <P.fcproj> --save run {out}",
+        "next": f"filmcraft-cli --project <P.fcproj> --save run {shlex.quote(str(out))}",
     }
     if len(review) > REVIEW_SHOWN:
         rf = out.with_suffix(".review.json")

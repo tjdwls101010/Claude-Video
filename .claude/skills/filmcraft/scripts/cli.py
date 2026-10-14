@@ -51,7 +51,7 @@ Exits: 0 written; 2 the command line must change (--cuts without --project, more
 
 TRANSCRIBE_DESC = f"""\
 Speech to a word-timed FilmCraft transcript, because this FilmCraft build cannot transcribe (transcript.generate and transcript.downloadModel are disabled).
-Runs mlx-whisper (default {transcribe.DEFAULT_MODEL}, about 1.6 GB, downloaded to ~/.cache/huggingface on first use; ask before that first download) with word timestamps, measures where speech is from the audio level, and moves Whisper's word edges onto it: an edge Whisper put in silence moves inward to the speech edge, however far, staying inside the word; the first word of a stretch of speech may start earlier, and the last may end later, by at most --max-shift. A word with no speech under it keeps Whisper's time. Under continuous music the level never drops, so only the outer edges of that passage can move.
+Runs mlx-whisper (default {transcribe.DEFAULT_MODEL}, about 1.6 GB, downloaded to ~/.cache/huggingface on first use; ask before that first download) with word timestamps, measures where speech is from the audio level, and moves Whisper's word edges onto it: an edge Whisper put in silence moves inward to the speech edge, however far, staying inside the word; the first word of a stretch of speech may start earlier, and the last may end later, by at most --max-shift. A word with no speech under it keeps Whisper's edges. Every word is then kept in order and at least a frame long, which can nudge a very short one. Under continuous music the level never drops, so only the outer edges of that passage can move.
 Writes --out as one `transcript.set` line (media-time ticks, Whisper's word probability as confidence), plus <out>.txt (one line per Whisper segment: [w<first>-w<last>] start-end text, the word indices those commands take) and <out>.whisper.json (the raw recognition, reusable with --from-json).
 Before applying: correct misrecognised words (names, terms) by editing the text fields of --out in place, keeping start/end. Then apply with the `next` command; the transcript attaches to the media item, so every clip of it in every sequence gets it.
 Prints: {{"item", "language", "words", "seconds", "speech_seconds", "snapped" (words with an edge moved), "unmatched" (words over no speech), "review": [{{"i", "text", "start_s", "reason"}}] (at most {transcribe.REVIEW_SHOWN}; the rest in review_file), "review_total", "out", "text", "whisper_json", "next"}}.
@@ -78,6 +78,16 @@ def size_arg(text: str) -> tuple[int, int]:
         return int(w), int(h)
     except ValueError:
         raise argparse.ArgumentTypeError(f"expected WxH like 1080x1920, got {text!r}")
+
+
+def positive(text: str) -> float:
+    try:
+        v = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a number, got {text!r}")
+    if not v > 0:
+        raise argparse.ArgumentTypeError(f"must be greater than 0, got {text}")
+    return v
 
 
 class Parser(argparse.ArgumentParser):
@@ -115,6 +125,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--expect-size", type=size_arg, metavar="WxH", help="required frame size, e.g. 1920x1080 (display size, after rotation metadata)")
     p.add_argument("--expect-fps", type=float, metavar="F", help="required frame rate, e.g. 29.97 (within 0.01)")
     p.add_argument("--expect-duration", type=float, metavar="S", help="required duration in seconds, within one frame")
+    p.add_argument("--lufs", type=float, metavar="L", help="the user's own integrated loudness target, replacing the target's default (same bands)")
     p.set_defaults(run=run_qc)
 
     p = sub.add_parser("frames", help="contact sheet of rendered or extracted frames, optionally with safe zones", description=FRAMES_DESC + frames.HELP_TABLE, formatter_class=fmt)
@@ -143,10 +154,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--margin", type=float, metavar="M", help="captions.setStyle margin, fraction of frame height from the anchored edge (default 0.08 landscape, 0.40 vertical)")
     p.add_argument("--anchor", choices=["bottom", "top"], default="bottom", help="captions.setStyle anchor (default bottom); top when burned-in text already occupies the bottom")
     p.add_argument("--lines", type=int, choices=[1, 2], default=2, help="lines a cue may have (default 2)")
-    p.add_argument("--cps", type=float, default=12.0, metavar="N", help="reading speed limit in characters a second (default 12)")
-    p.add_argument("--min", dest="min_s", type=float, default=5 / 6, metavar="SEC", help="shortest cue (default 5/6 s)")
-    p.add_argument("--max", dest="max_s", type=float, default=7.0, metavar="SEC", help="longest cue (default 7 s)")
-    p.add_argument("--fps", type=float, metavar="F", help="--cues only: the sequence's frame rate, so cue times land on frames (default 30)")
+    p.add_argument("--cps", type=positive, default=12.0, metavar="N", help="reading speed limit in characters a second (default 12)")
+    p.add_argument("--min", dest="min_s", type=positive, default=5 / 6, metavar="SEC", help="shortest cue (default 5/6 s)")
+    p.add_argument("--max", dest="max_s", type=positive, default=7.0, metavar="SEC", help="longest cue (default 7 s)")
+    p.add_argument("--fps", type=positive, metavar="F", help="--cues only: the sequence's frame rate, so cue times land on frames (default 30)")
     p.add_argument("--frame", type=size_arg, metavar="WxH", help="--cues only: the sequence's frame size, for the width check (default 1920x1080)")
     p.set_defaults(run=lambda a: captions.make(a.out.resolve(), project=a.project.resolve() if a.project else None, bridge=a.bridge, cues_file=a.cues.resolve() if a.cues else None,
                                                fps=a.fps, frame=a.frame, font=a.font, size=a.size, margin=a.margin, anchor=a.anchor, lines=a.lines, cps=a.cps, min_s=a.min_s, max_s=a.max_s))
@@ -164,7 +175,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run_qc(a) -> dict:
-    out = qc.check(a.file.resolve(), a.target, a.expect_size, a.expect_fps, a.expect_duration)
+    out = qc.check(a.file.resolve(), a.target, a.expect_size, a.expect_fps, a.expect_duration, a.lufs)
     out["_exit"] = EXIT_OK if out["pass"] else EXIT_QC_FAIL
     return out
 

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from fractions import Fraction
+
+_TC = re.compile(r"^(\d+):(\d{2}):(\d{2})([:;])(\d{2})$")
 
 TICKS_PER_SECOND = 254_016_000_000
 
@@ -81,3 +84,18 @@ class Rate:
         ff = frame % base
         total = frame // base
         return f"{sign}{total // 3600:02d}:{total // 60 % 60:02d}:{total % 60:02d}{sep}{ff:02d}"
+
+    def frame_of_timecode(self, text: str, drop: bool = False) -> int:
+        """The frame a `HH:MM:SS:FF` (or drop-frame `HH:MM:SS;FF`) label names; a `;` reads as drop-frame on rates that support it, as does `drop`. Raises ValueError for anything else."""
+        m = _TC.match(text.strip())
+        if not m:
+            raise ValueError(f"not a timecode: {text!r}")
+        h, mi, s, sep, f = m.groups()
+        h, mi, s, f = int(h), int(mi), int(s), int(f)
+        base = self.timecode_base
+        frames = ((h * 60 + mi) * 60 + s) * base + f
+        if (drop or sep == ";") and self.supports_drop_frame:
+            d = 2 * (base // 30)
+            minutes = h * 60 + mi
+            frames -= d * (minutes - minutes // 10)
+        return frames

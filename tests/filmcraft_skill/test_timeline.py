@@ -157,3 +157,13 @@ def test_help_explains_arguments_output_and_failures():
     assert code == 0
     for word in ("--project", "--bridge", "--sequence", "--out", "Prints:", "Exits:", "end_tc"):
         assert word in raw, word
+
+
+def test_drop_frame_timecode_reads_back_to_the_frame_it_names():
+    """SMPTE 12M: one hour of 29.97 drop-frame is frame 107892; ten minutes is 17982."""
+    r = timecode.Rate(30000, 1001)
+    assert r.frame_of_timecode("01:00:00;00", drop=True) == 107892
+    assert r.frame_of_timecode("00:10:00;00", drop=True) == 17982
+    assert r.frame_of_timecode("00:01:00;02", drop=True) == 1800
+    assert r.frame_of_timecode("00:00:03:00", drop=False) == 90
+    assert all(r.frame_of_timecode(r.timecode(f, drop=True), drop=True) == f for f in range(0, 40000, 37))

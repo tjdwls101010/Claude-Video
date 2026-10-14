@@ -133,6 +133,37 @@ def check_interfaces(scripts: Path, tests: Path | None) -> list[str]:
     return out
 
 
+def check_attribute_reach(scripts: Path, tests: Path | None) -> list[str]:
+    """`from filmcraft import ffmpeg` then `ffmpeg.extract.extract_frame(...)` reaches past the interface as surely as importing `filmcraft.ffmpeg.extract`."""
+    package = scripts / PKG
+    units = {p.parent.name for p in package.glob("*/__init__.py")}
+    # an inner module's name is fine when the interface exports something by that name (ffmpeg.probe is the function)
+    inner = {u: {p.stem if p.is_file() else p.name for p in (package / u).iterdir() if p.name not in ("__init__.py", "__pycache__") and (p.suffix == ".py" or p.is_dir())}
+                - (declared_all(package / u / "__init__.py") or set()) for u in units}
+    files = [(p, unit_of(p, package)) for p in py_files(package)] + [(scripts / "cli.py", None)] + ([(p, None) for p in py_files(tests)] if tests else [])
+    out = []
+    for p, own in files:
+        if not p.exists():
+            continue
+        tree = ast.parse(p.read_text())
+        bound: dict[str, str] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == PKG and not node.level:
+                bound.update({(a.asname or a.name): a.name for a in node.names if a.name in inner})
+            elif isinstance(node, ast.Import):
+                bound.update({a.asname: a.name.split(".")[1] for a in node.names if a.asname and a.name.count(".") == 1 and a.name.startswith(PKG + ".") and a.name.split(".")[1] in inner})
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Attribute):
+                continue
+            base = node.value
+            if isinstance(base, ast.Name) and base.id in bound and bound[base.id] != own and node.attr in inner[bound[base.id]]:
+                out.append(f"{p}:{node.lineno} reaches past the interface: {base.id}.{node.attr}")
+            if (isinstance(base, ast.Attribute) and isinstance(base.value, ast.Name) and base.value.id == PKG and base.attr in inner
+                    and base.attr != own and node.attr in inner[base.attr]):
+                out.append(f"{p}:{node.lineno} reaches past the interface: {PKG}.{base.attr}.{node.attr}")
+    return out
+
+
 def check_no_sys_path(scripts: Path) -> list[str]:
     """`cli.py` run directly already has `scripts/` first on sys.path; editing it hides an import bug until the skill runs from elsewhere."""
     out = []
@@ -147,7 +178,7 @@ def check_no_sys_path(scripts: Path) -> list[str]:
 
 def all_violations(scripts: Path, tests: Path | None) -> list[str]:
     return (check_top_level(scripts) + check_kinds(scripts) + check_relative_imports(scripts) + check_direction(scripts)
-            + check_interfaces(scripts, tests) + check_no_sys_path(scripts))
+            + check_interfaces(scripts, tests) + check_attribute_reach(scripts, tests) + check_no_sys_path(scripts))
 
 
 # -- the real tree ----------------------------------------------------------------------------------------------------------
@@ -193,6 +224,8 @@ def test_clean_tree_passes(tmp_path):
     ({f"{PKG}/whisper/__init__.py": "from filmcraft import ffmpeg\n__all__ = []\n"}, "system whisper imports system ffmpeg"),
     ({"cli.py": "from filmcraft.qc.judge import judge\n"}, "reaches past the interface"),
     ({"cli.py": "from filmcraft.qc import helper\n"}, "qc.helper is not in __all__"),
+    ({"cli.py": "from filmcraft import qc\nqc.bands.x()\n", f"{PKG}/qc/bands.py": "def x(): pass\n"}, "reaches past the interface: qc.bands"),
+    ({"cli.py": "import filmcraft\nfilmcraft.qc.bands.x()\n", f"{PKG}/qc/bands.py": "def x(): pass\n"}, "reaches past the interface: filmcraft.qc.bands"),
     ({"cli.py": "from filmcraft.timecode import _private\n"}, "timecode._private is private"),
     ({f"{PKG}/qc/__init__.py": "from .judge import judge\n"}, "has no literal __all__"),
     ({f"{PKG}/qc/judge.py": "from ..ffmpeg import probe\n"}, "relative import leaves its unit"),

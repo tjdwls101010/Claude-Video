@@ -206,3 +206,22 @@ def test_help_explains_snapping_review_and_next_step():
     assert code == 0
     for word in ("--item", "--out", "--language", "--model", "--max-shift", "--from-json", "review", "low_prob", "unmatched", "repeat", "transcript.set", "Prints:", "Exits:"):
         assert word in raw, word
+
+
+# -- review findings ----------------------------------------------------------------------------------------------------
+
+def test_next_survives_a_path_with_spaces_and_shell_metacharacters(tmp_path):
+    import shlex
+    audio = tone_bursts(tmp_path / "b.wav", [(1.0, 2.0)], 3)
+    wj = whisper_json(tmp_path / "w.json", [[("가", 1.0, 2.0)]])
+    out = tmp_path / "a b; echo INJECTED #.jsonl"
+    code, res, raw, err = skill("transcribe", str(audio), "--item", "1", "--out", str(out), "--from-json", str(wj), cwd=tmp_path)
+    assert code == 0, raw + err
+    assert shlex.split(res["next"])[-1] == str(out)
+
+
+def test_a_json_that_is_not_mlx_whisper_output_is_a_usage_error(tmp_path):
+    audio = tone_bursts(tmp_path / "b.wav", [(1.0, 2.0)], 3)
+    (tmp_path / "w.json").write_text("[]")
+    code, res, raw, err = skill("transcribe", str(audio), "--item", "1", "--out", str(tmp_path / "t.jsonl"), "--from-json", str(tmp_path / "w.json"), cwd=tmp_path)
+    assert code == 2 and res and "w.json" in res["error"]

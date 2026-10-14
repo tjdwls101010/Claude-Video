@@ -44,7 +44,7 @@ def _normalized(words: list[Word]) -> list[Word]:
 
 
 def snap(words: list[Word], spans: list[tuple[float, float]], max_shift: float, min_dur: float) -> tuple[list[Word], dict]:
-    """Each word belongs to the speech span it overlaps most. An edge Whisper put in silence moves inward to the span edge (it stays inside the word, so order cannot break); the first word of a span may start earlier, and the last may end later, by at most `max_shift`. A word overlapping no speech keeps its time and is reported. Afterwards no word overlaps the one before it or lasts less than `min_dur`."""
+    """Each word belongs to the speech span it overlaps most. An edge Whisper put in silence moves inward to the span edge (it stays inside the word, so order cannot break); the first word of a span may start earlier, and the last may end later, by at most `max_shift`. A word overlapping no speech keeps its edges and is reported. Last, every word (reported ones included) is pushed to start no earlier than the previous word ends and to last at least `min_dur`, since FilmCraft needs ordered words a frame long."""
     ws = _normalized(words)
     owner: list[int | None] = []
     for w in ws:

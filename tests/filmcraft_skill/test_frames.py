@@ -21,7 +21,7 @@ def color_media(path, size="640x360", rate="30"):
     for i, (name, _) in enumerate(COLORS):
         inputs += ["-f", "lavfi", "-i", f"color=c={name}:s={size}:r={rate}:d=1"]
     ffmpeg(*inputs, "-filter_complex", "".join(f"[{i}:v]" for i in range(len(COLORS))) + f"concat=n={len(COLORS)}:v=1:a=0[v]",
-           "-map", "[v]", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-qp", "0", str(path))
+           "-map", "[v]", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "1", str(path))
     return path
 
 
@@ -91,7 +91,7 @@ def test_project_mode_renders_through_filmcraft_and_cuts_list_each_shot(tmp_path
 def test_shorts_overlay_marks_the_ui_areas_on_a_vertical_frame(tmp_path):
     """Shorts margins on 1080x1920 (top, bottom, left, right): the overlay tints exactly those bands, and the safe box stays untouched."""
     gray = tmp_path / "g.mp4"
-    ffmpeg("-f", "lavfi", "-i", "color=c=0x808080:s=1080x1920:r=30:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-qp", "0", str(gray))
+    ffmpeg("-f", "lavfi", "-i", "color=c=0x808080:s=1080x1920:r=30:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "1", str(gray))
     p = tmp_path / "v.fcproj"
     item = json.loads(fc("--save-as", str(p), "import", str(gray), cwd=tmp_path).stdout)["items"][0]
     assert all(l["ok"] for l in fc_run([
@@ -156,7 +156,7 @@ def test_cuts_step_past_a_dissolve_to_show_the_shot_itself(tmp_path):
 @needs_filmcraft
 def test_tiktok_overlay_shades_the_button_column_below_its_top(tmp_path):
     gray = tmp_path / "g.mp4"
-    ffmpeg("-f", "lavfi", "-i", "color=c=0x808080:s=1080x1920:r=30:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-qp", "0", str(gray))
+    ffmpeg("-f", "lavfi", "-i", "color=c=0x808080:s=1080x1920:r=30:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "1", str(gray))
     p = tmp_path / "v.fcproj"
     item = json.loads(fc("--save-as", str(p), "import", str(gray), cwd=tmp_path).stdout)["items"][0]
     assert all(l["ok"] for l in fc_run([

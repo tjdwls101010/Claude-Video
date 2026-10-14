@@ -21,17 +21,22 @@ def read(path: Path) -> list[Cue]:
         text = Path(path).read_text(encoding="utf-8-sig")
     except (OSError, UnicodeDecodeError) as e:
         raise InputError(f"{path}: cannot read as UTF-8 SubRip ({e})")
-    cues = []
-    for block in re.split(r"\n\s*\n", text.replace("\r", "").strip()):
+    cues, bad = [], []
+    for n, block in enumerate(re.split(r"\n\s*\n", text.replace("\r", "").strip()), 1):
         lines = block.split("\n")
-        for k, line in enumerate(lines):
-            m = _TIME.search(line)
-            if m:
-                g = m.groups()
-                body = [l for l in lines[k + 1:] if l.strip()]
-                if body:
-                    cues.append(Cue(_sec(*g[:4]), _sec(*g[4:]), body))
-                break
+        k = next((k for k, line in enumerate(lines) if _TIME.search(line)), None)
+        if k is None:
+            bad.append(f"block {n}: no readable 'HH:MM:SS,mmm --> HH:MM:SS,mmm' line")
+            continue
+        g = _TIME.search(lines[k]).groups()
+        start, end = _sec(*g[:4]), _sec(*g[4:])
+        body = [l for l in lines[k + 1:] if l.strip()]
+        if end <= start:
+            bad.append(f"block {n}: ends at or before it starts")
+        elif body:
+            cues.append(Cue(start, end, body))
+    if bad:
+        raise InputError(f"{path}: " + "; ".join(bad) + ". Fix these cues; nothing was laid out")
     if not cues:
         raise InputError(f"{path}: no SubRip cues found")
     return cues

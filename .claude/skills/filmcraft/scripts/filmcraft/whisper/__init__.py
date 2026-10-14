@@ -47,14 +47,16 @@ class Recognition:
 def read(path: Path) -> Recognition:
     try:
         d = json.loads(Path(path).read_text())
-    except (OSError, json.JSONDecodeError) as e:
-        raise InputError(f"{path}: not an mlx-whisper JSON file ({e})")
-    segs = []
-    for s in d.get("segments") or []:
-        words = [RawWord(w.get("word", "").strip(), float(w["start"]), float(w["end"]), float(w.get("probability", 1.0))) for w in s.get("words") or []]
-        segs.append(Segment(float(s.get("start", 0)), float(s.get("end", 0)), (s.get("text") or "").strip(), float(s.get("no_speech_prob", 0.0)),
-                            float(s.get("avg_logprob", 0.0)), float(s.get("compression_ratio", 1.0)), [w for w in words if w.text]))
-    return Recognition(language=d.get("language") or "", segments=segs)
+        if not isinstance(d, dict) or not isinstance(d.get("segments"), list):
+            raise ValueError("no `segments` list")
+        segs = []
+        for s in d["segments"]:
+            words = [RawWord(str(w.get("word", "")).strip(), float(w["start"]), float(w["end"]), float(w.get("probability", 1.0))) for w in s.get("words") or []]
+            segs.append(Segment(float(s.get("start", 0)), float(s.get("end", 0)), str(s.get("text") or "").strip(), float(s.get("no_speech_prob", 0.0)),
+                                float(s.get("avg_logprob", 0.0)), float(s.get("compression_ratio", 1.0)), [w for w in words if w.text]))
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as e:
+        raise InputError(f"{path}: not mlx-whisper JSON with word timestamps ({e})")
+    return Recognition(language=str(d.get("language") or ""), segments=segs)
 
 
 def recognise(media: Path, out_dir: Path, language: str | None, model: str) -> Path:

@@ -173,3 +173,29 @@ def test_help_carries_the_criteria_table_with_its_authority():
     for word in ("youtube", "shorts", "reels", "tiktok", "broadcast-kr", "-14", "-24", "dBTP", "Prints:", "Exits:", "3"):
         assert word in raw, word
     assert re.search(r"regulation|platform spec|measured|practice|decision", raw)
+
+
+# -- review findings ----------------------------------------------------------------------------------------------------
+
+def test_an_expected_duration_does_not_lift_the_platform_limit(tmp_path):
+    limit = qc.LIMITS["shorts"]["max_duration"]
+    f = av(tmp_path / "long.mp4", size="1080x1920", rate="5", seconds=limit + 2)
+    code, out = run_qc(f, "shorts", "--expect-duration", str(limit + 2))
+    assert code == 3 and "duration" in out["failed"]
+
+
+def test_a_truncated_trailing_box_does_not_crash_the_check(tmp_path):
+    f = av(tmp_path / "t.mp4")
+    with open(f, "ab") as fh:
+        fh.write(bytes.fromhex("0000000166726565"))
+    code, out = run_qc(f, "youtube")
+    assert code in (0, 3) and out["checks"]
+
+
+def test_the_users_own_loudness_target_replaces_the_default(tmp_path):
+    f = av(tmp_path / "quiet.mp4", lufs=-18.0)
+    code, out = run_qc(f, "youtube")
+    assert "integrated_loudness" in out["failed"]
+    code, out = run_qc(f, "youtube", "--lufs", "-18")
+    assert code == 0 and "integrated_loudness" not in out["failed"] + out["warnings"]
+    assert check(out, "integrated_loudness")["expected"] == -18.0

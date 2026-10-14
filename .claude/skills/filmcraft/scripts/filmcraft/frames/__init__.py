@@ -18,19 +18,17 @@ from .zones import HELP_TABLE, SAFE_ZONES
 __all__ = ["sheet", "SAFE_ZONES", "HELP_TABLE", "MAX_FRAMES"]
 
 MAX_FRAMES = 100
-_TC = re.compile(r"^(\d+):(\d{2}):(\d{2})[:;](\d{2})$")
+_TC = re.compile(r"^\d+:\d{2}:\d{2}[:;]\d{2}$")
 
 
-def _frame_of(value: str, rate: Rate) -> int:
-    """`12.5` (seconds) or `HH:MM:SS:FF` at `rate` → frame index (the frame containing that instant)."""
-    m = _TC.match(value.strip())
-    if m:
-        h, mi, s, f = map(int, m.groups())
-        return (h * 3600 + mi * 60 + s) * rate.timecode_base + f
+def _frame_of(value: str, rate: Rate, drop: bool) -> int:
+    """`12.5` (seconds) or `HH:MM:SS:FF` / `HH:MM:SS;FF` at `rate` → frame index (the frame containing that instant)."""
+    if _TC.match(value.strip()):
+        return rate.frame_of_timecode(value, drop)
     try:
         return rate.frame_of_seconds(float(value))
     except ValueError:
-        raise InputError(f"--at {value!r}: give seconds (12.5) or a timecode (00:00:12:15)")
+        raise InputError(f"--at {value!r}: give seconds (12.5) or a timecode (00:00:12:15, or 00:00:12;15 drop-frame)")
 
 
 def _clear_of_transitions(frame: int, track, rate: Rate) -> int:
@@ -42,9 +40,9 @@ def _clear_of_transitions(frame: int, track, rate: Rate) -> int:
     return frame
 
 
-def _pick(rate: Rate, total_frames: int, at: list[str] | None, every: float | None, cuts: list[int] | None) -> list[int]:
+def _pick(rate: Rate, total_frames: int, at: list[str] | None, every: float | None, cuts: list[int] | None, drop: bool = False) -> list[int]:
     if at:
-        frames = [_frame_of(a, rate) for a in at]
+        frames = [_frame_of(a, rate, drop) for a in at]
     elif every:
         n = int((total_frames / float(rate.fps)) // every) + 1
         frames = [rate.frame_of_seconds(i * every) for i in range(n)]
@@ -77,7 +75,7 @@ def sheet(out: Path, *, project: Path | None = None, media: Path | None = None, 
         size, drop, cut_frames = v.display_size, False, None
         if v.transfer in ("smpte2084", "arib-std-b67"):
             notes.append("HDR source: ffmpeg frames are not tone-mapped, so colours look flat; judge colour from a --project render, where FilmCraft tone-maps to the sequence")
-    frames = _pick(rate, total, at, every, cut_frames)
+    frames = _pick(rate, total, at, every, cut_frames, drop)
     vertical = size[1] > size[0]
     platforms = [] if not overlay else (list(SAFE_ZONES) if overlay == "all" else [overlay])
     if platforms and not vertical:

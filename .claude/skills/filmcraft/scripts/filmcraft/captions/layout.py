@@ -121,7 +121,8 @@ def group(ws: list[Word], rules: Rules, fits: Fits) -> list[tuple[int, int, list
     return out[::-1]
 
 
-def time_cues(ws: list[Word], groups, rules: Rules, fps: Fraction) -> list[Cue]:
+def time_cues(ws: list[Word], groups, rules: Rules, fps: Fraction, caps: dict[int, float] | None = None) -> list[Cue]:
+    """Frame-aligned times: a cue starts on its first word and stays up long enough to read (and at least `min_s`), but not past the next cue less a small gap, nor past `caps[group]` when given."""
     f = float(fps)
     starts = []
     for i, _, _ in groups:
@@ -139,23 +140,27 @@ def time_cues(ws: list[Word], groups, rules: Rules, fps: Fraction) -> list[Cue]:
             nxt = starts[k + 1]
             if e > nxt - rules.gap_frames or nxt - e < round(rules.close_gap_s * f):
                 e = nxt - rules.gap_frames
+        if caps and ws[j].group in caps:
+            e = min(e, math.floor(caps[ws[j].group] * f + 1e-6))
         e = max(e, s + 1)
         cues.append(Cue(s / f, e / f, lines))
     return cues
 
 
-def layout(words: list[Word], rules: Rules, fps, fits: Fits | None = None) -> list[Cue]:
+def layout(words: list[Word], rules: Rules, fps, fits: Fits | None = None, caps: dict[int, float] | None = None) -> list[Cue]:
     ws = sorted((w for w in words if w.text.strip()), key=lambda w: (w.start, w.end))
     if not ws:
         return []
     fits = fits or (lambda line: True)
-    return time_cues(ws, group(ws, rules, fits), rules, Fraction(fps))
+    return time_cues(ws, group(ws, rules, fits), rules, Fraction(fps), caps)
 
 
 def relayout(cues: list[Cue], rules: Rules, fps, fits: Fits | None = None) -> list[Cue]:
-    """Cues written elsewhere (a translation) laid out again: each cue's words share its time in proportion to their length, and no new cue crosses an old cue's edge."""
+    """Cues written elsewhere (a translation) laid out again: each cue's words share its time in proportion to their length, and every new cue stays inside the old cue it came from (a cue too short to read is reported, not stretched)."""
     words: list[Word] = []
+    caps: dict[int, float] = {}
     for g, c in enumerate(sorted(cues, key=lambda c: c.start)):
+        caps[g] = c.end
         toks = " ".join(c.lines).split()
         if not toks:
             continue
@@ -165,10 +170,10 @@ def relayout(cues: list[Cue], rules: Rules, fps, fits: Fits | None = None) -> li
             d = (c.end - c.start) * wgt / total
             words.append(Word(tok, t, t + d, group=g))
             t += d
-    return layout(words, rules, fps, fits)
+    return layout(words, rules, fps, fits, caps)
 
 
-def violations(cues: list[Cue], rules: Rules) -> list[dict]:
+def violations(cues: list[Cue], rules: Rules, fits: Fits | None = None) -> list[dict]:
     out = []
     for n, c in enumerate(cues, 1):
         dur = c.end - c.start
@@ -177,6 +182,6 @@ def violations(cues: list[Cue], rules: Rules) -> list[dict]:
             out.append({"cue": n, "kind": "cps", "value": round(speed, 1), "text": " / ".join(c.lines)})
         if dur < rules.min_s - 1e-6:
             out.append({"cue": n, "kind": "short", "value": round(dur, 3), "text": " / ".join(c.lines)})
-        if len(c.lines) > rules.lines or any(units(l) > rules.max_units for l in c.lines):
+        if len(c.lines) > rules.lines or any(units(l) > rules.max_units or (fits is not None and not fits(l)) for l in c.lines):
             out.append({"cue": n, "kind": "long_line", "value": max(units(l) for l in c.lines), "text": " / ".join(c.lines)})
     return out

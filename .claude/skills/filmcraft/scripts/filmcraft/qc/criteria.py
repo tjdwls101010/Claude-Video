@@ -46,5 +46,5 @@ Criteria. Level: fail = required (exit 3), warn = advice, info = recorded only. 
     integrated loudness -24 LKFS ±2 fail  [regulation: 디지털 텔레비전 방송프로그램 음량 등에 관한 기준 제3조]
     true peak <= -1 dBTP warn  [practice: the notice sets no true-peak limit; the TTA standard it cites was not checked]
     audio present fail; everything else recorded only
-  every target: an audio stream is required (fail) [decision]; any --expect-* given is required (fail).
+  every target: an audio stream is required (fail) [decision]; any --expect-* given is required (fail) on top of the target's own limits; --lufs replaces the loudness target (same bands) when the user mixes to their own level.
 A value that cannot be measured (no audio stream; silence below the -70 LUFS gate) is null with a `reason` and counts as a warning."""

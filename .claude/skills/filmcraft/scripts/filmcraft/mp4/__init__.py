@@ -40,11 +40,14 @@ def _boxes(f, start: int, end: int):
         size, kind = struct.unpack(">I4s", head)
         header = 8
         if size == 1:
-            size = struct.unpack(">Q", f.read(8))[0]
+            ext = f.read(8)
+            if len(ext) < 8:
+                return
+            size = struct.unpack(">Q", ext)[0]
             header = 16
         elif size == 0:
             size = end - pos
-        if size < header:
+        if size < header or pos + size > end:
             return
         yield kind, pos + header, pos + size
         pos += size

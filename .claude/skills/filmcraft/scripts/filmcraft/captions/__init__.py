@@ -52,14 +52,14 @@ def make(out: Path, *, project: Path | None = None, bridge: str | None = None, c
     fr = Fraction(rate.num, rate.den)
     result = layout(words, rules, fr, m.fits) if cues_file is None else relayout(srt.read(cues_file), rules, fr, m.fits)
     srt.write(result, out)
-    where = f"--project {shlex.quote(str(project))}" if project is not None else f"--bridge {bridge}" if bridge else "--project <P.fcproj>"
+    where = f"--project {shlex.quote(str(project))}" if project is not None else f"--bridge {shlex.quote(bridge)}" if bridge else "--project <P.fcproj>"
     style_args = " ".join(f"{k}={shlex.quote(str(v))}" for k, v in style.items())
     return {
         "cues": len(result),
         "style": style,
         "max_line_units": min(rules.max_units, m.units_per_line()),
         "width": {"source": m.source, "face": m.face, "px": round(m.px, 1), "max_line_px": round(m.max_px)},
-        "violations": violations(result, rules),
+        "violations": violations(result, rules, m.fits),
         "out": str(out),
         "notes": notes,
         "next": [f"filmcraft-cli {where} --save exec captions.import path={shlex.quote(str(out))}",

@@ -36,6 +36,6 @@ def measure(path: Path) -> Measurements:
     )
 
 
-def check(path: Path, target: str, expect_size: tuple[int, int] | None = None, expect_fps: float | None = None, expect_duration: float | None = None) -> dict:
-    result = judge(measure(path), target, expect_size, expect_fps, expect_duration)
+def check(path: Path, target: str, expect_size: tuple[int, int] | None = None, expect_fps: float | None = None, expect_duration: float | None = None, lufs: float | None = None) -> dict:
+    result = judge(measure(path), target, expect_size, expect_fps, expect_duration, lufs)
     return {"file": str(path), **result}

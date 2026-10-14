@@ -33,7 +33,7 @@ def _row(name, value, expected, tolerance, level, ok, reason=None):
     return {"name": name, "value": value, "expected": expected, "tolerance": tolerance, "level": level, "pass": ok, "reason": reason}
 
 
-def judge(m: Measurements, target: str, expect_size: tuple[int, int] | None = None, expect_fps: float | None = None, expect_duration: float | None = None) -> dict:
+def judge(m: Measurements, target: str, expect_size: tuple[int, int] | None = None, expect_fps: float | None = None, expect_duration: float | None = None, lufs: float | None = None) -> dict:
     """Each check is `fail` (required), `warn` (advice) or `info` (recorded only). A required check that fails puts its name in `failed`; an advisory one that fails, a loudness inside the warn band, or a value that could not be measured puts it in `warnings`. `pass` is false when anything failed."""
     t = TARGETS[target]
     lim = LIMITS.get(target, {})
@@ -66,12 +66,16 @@ def judge(m: Measurements, target: str, expect_size: tuple[int, int] | None = No
     else:
         add("video", None, "a video stream", None, False, "no video stream", level="fail")
     frame = 1 / m.fps if m.fps else 1 / 24
+    wants, oks = [], []
     if expect_duration is not None:
-        ok = None if m.duration is None else abs(m.duration - expect_duration) <= frame + 1e-6
-        add("duration", m.duration, expect_duration, round(frame, 4), ok, level="fail")
-    elif lim.get("max_duration"):
-        ok = None if m.duration is None else m.duration <= lim["max_duration"] + frame
-        add("duration", m.duration, f"<= {lim['max_duration']}", None, ok, level="fail")
+        wants.append(f"{expect_duration} ±1 frame")
+        oks.append(None if m.duration is None else abs(m.duration - expect_duration) <= frame + 1e-6)
+    if lim.get("max_duration"):
+        wants.append(f"<= {lim['max_duration']}")
+        oks.append(None if m.duration is None else m.duration <= lim["max_duration"] + frame)
+    if wants:
+        ok = None if None in oks else all(oks)
+        add("duration", m.duration, ", ".join(wants), round(frame, 4), ok, level="fail")
         advised = lim.get("advised_duration")
         if ok and advised and m.duration is not None and m.duration > advised[0] + frame:
             warn_names.add("duration")
@@ -85,7 +89,7 @@ def judge(m: Measurements, target: str, expect_size: tuple[int, int] | None = No
         add("sample_rate", m.sample_rate, 48000, None, None if m.sample_rate is None else m.sample_rate == 48000)
         add("channels", m.channels, 2, None, None if m.channels is None else m.channels == 2)
 
-    band = lim["loudness"]
+    band = dict(lim["loudness"], **({"target": float(lufs)} if lufs is not None else {}))
     reason = None if m.has_audio else "no audio stream"
     reason = reason or m.loudness_reason
     if m.integrated is None:

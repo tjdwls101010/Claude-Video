@@ -138,7 +138,7 @@ def test_translated_cues_are_relaid_out_within_their_own_time():
     assert all(len(c.lines) <= 2 and all(captions.units(l) <= 16 for l in c.lines) for c in cues)
     assert all(c.end - c.start <= 7.0 + 1e-9 for c in cues)
     firsts = [c for c in cues if c.start < 10.0]
-    assert firsts[0].start == 0.0 and firsts[-1].end <= 10.0 - 2 / 30 + 1e-9 and len(firsts) >= 2  # a gap under 0.5 s closes to 2 frames
+    assert firsts[0].start == 0.0 and firsts[-1].end <= 9.63 + 1e-9 and len(firsts) >= 2
     plain = lambda t: re.sub(r"[,.]", "", re.sub(r"\s+", " ", t))
     assert plain(" ".join(" ".join(c.lines) for c in firsts)) == plain("정말로 배려하는 존재, 이상적으로는 스스로도 배려받는다고 느끼며 모든 일이 잘되길 바라는 존재예요.")
     assert cues[-1].lines == ["좋은 질문이에요"] and cues[-1].start == 10.0
@@ -279,3 +279,43 @@ def test_help_owns_the_numbers():
     assert code == 0
     for word in ("16", "12", "5/6", "7", "0.5", "--font", "--size", "--margin", "--anchor", "--cues", "captions.import", "captions.setStyle", "Prints:", "Exits:", "Netflix"):
         assert word in raw, word
+
+
+# -- review findings ----------------------------------------------------------------------------------------------------
+
+def test_relaid_cues_never_outlast_the_cue_they_came_from():
+    cues = captions.relayout([captions.Cue(1.0, 1.1, ["네."]), captions.Cue(5.0, 14.63, ["정말로 배려하는 존재, 이상적으로는 스스로도 배려받는다고 느끼며 모든 일이 잘되길 바라는 존재예요."])], RULES, FPS)
+    assert cues[0].end <= 1.1 + 1e-9
+    assert max(c.end for c in cues if c.start >= 5.0) <= 14.63 + 1e-9
+    assert ("short" in {v["kind"] for v in captions.violations(cues, RULES) if v["cue"] == 1})
+
+
+def test_a_single_word_wider_than_the_line_is_reported():
+    fits = lambda line: captions.units(line) <= 10
+    cues = captions.layout(words([("가나다라마바사아자차카타파하", 0.0, 3.0)]), RULES, FPS, fits=fits)
+    assert any(v["kind"] == "long_line" for v in captions.violations(cues, RULES, fits))
+
+
+def test_next_survives_a_path_with_spaces_and_shell_metacharacters(tmp_path):
+    import shlex
+    src = tmp_path / "ko.srt"
+    src.write_text("1\n00:00:00,000 --> 00:00:02,000\n좋은 질문이에요.\n", encoding="utf-8")
+    out = tmp_path / "a b; echo INJECTED #.srt"
+    code, res, raw, err = skill("captions", "--cues", str(src), "--out", str(out), cwd=tmp_path)
+    assert code == 0, raw + err
+    assert shlex.split(res["next"][0])[-1] == f"path={out}"
+
+
+def test_a_malformed_srt_is_refused_with_the_blocks_named(tmp_path):
+    src = tmp_path / "bad.srt"
+    src.write_text("1\n00:00:02,000 --> 00:00:01,000\n거꾸로\n\n2\n00:00:0x,000 --> 00:00:03,000\n잘못된 시간\n\n3\n00:00:04,000 --> 00:00:05,000\n정상\n", encoding="utf-8")
+    code, res, raw, err = skill("captions", "--cues", str(src), "--out", str(tmp_path / "o.srt"), cwd=tmp_path)
+    assert code == 2 and "1" in res["error"] and "2" in res["error"]
+
+
+@pytest.mark.parametrize("args", [["--cps", "0"], ["--fps", "-1"], ["--min", "0"], ["--max", "-2"]])
+def test_impossible_rule_values_are_usage_errors(tmp_path, args):
+    src = tmp_path / "ko.srt"
+    src.write_text("1\n00:00:00,000 --> 00:00:02,000\n좋은 질문이에요.\n", encoding="utf-8")
+    code, res, raw, err = skill("captions", "--cues", str(src), "--out", str(tmp_path / "o.srt"), *args, cwd=tmp_path)
+    assert code == 2 and res and "error" in res

@@ -185,3 +185,20 @@ def read_sequence(source: Source, sequence: int | None = None) -> Sequence:
     cmds = ([("sequence.open", {"item": sequence})] if sequence is not None else []) + [("sequence.inspect", {}), ("captions.list", {})]
     results = run(source, cmds)
     return parse(results[-2], results[-1])
+
+
+@dataclass
+class SeqWord:
+    """A transcript word where the active sequence shows it (FilmCraft maps media time through each clip's in point and speed, and drops words cut away)."""
+    text: str
+    start: int
+    end: int
+    speaker: str | None
+    clip: int
+
+
+def read_words(source: Source) -> tuple[Sequence, list[SeqWord]]:
+    results = run(source, [("sequence.inspect", {}), ("transcript.inspect", {})])
+    seq = parse(results[0], None)
+    words = [SeqWord(w.get("text") or "", w["start"], w["end"], w.get("speaker"), w.get("clip")) for w in (results[1] or {}).get("words") or []]
+    return seq, words

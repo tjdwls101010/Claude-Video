@@ -22,10 +22,13 @@ def write(d: Path, body: str, name: str = "p.html") -> Path:
     return p
 
 
-def test_the_same_time_draws_the_same_frame_in_any_order(tmp_path):
-    body = """<style>#c{position:absolute;left:0;width:40px;height:40px;background:#00f;animation:mv 2s linear}@keyframes mv{to{left:200px}}</style><div id=c></div>
-<div id=s style="position:absolute;top:50px;width:40px;height:40px;background:#f00"></div>
-<script>window.seek = t => { document.getElementById('s').style.left = (t * 100) + 'px' }</script>"""
+@pytest.mark.parametrize("body", [
+    "<style>#c{position:absolute;left:0;width:40px;height:40px;background:#00f;animation:mv 2s linear}@keyframes mv{to{left:200px}}</style><div id=c></div>",
+    """<div id=s style="position:absolute;width:40px;height:40px;background:#f00"></div>
+<script>window.seek = t => { document.getElementById('s').style.left = (t * 100) + 'px' }</script>""",
+], ids=["css animation", "seek"])
+def test_the_same_time_draws_the_same_frame_in_any_order(tmp_path, body):
+    """Each page moves by one mechanism only, so the frames differ between times because of that mechanism and match at the same time despite the trip back."""
     got = []
     with chrome.open_page(write(tmp_path, body), 320, 100) as pg:
         pg.frames([1.0, 0.5, 1.0], lambda t, png: got.append(png))
@@ -47,4 +50,4 @@ def test_sound_that_never_arrives_fails_as_audio(tmp_path):
     body = "<script>window.renderAudio = () => new Promise(() => {})</script>"
     with chrome.open_page(write(tmp_path, body), 320, 100, chrome.Timeouts(audio=2)) as pg:
         with pytest.raises(ToolError, match=r"^audio:"):
-            pg.audio(48000, 1.0)
+            pg.audio(48000, 1.0, 48000)

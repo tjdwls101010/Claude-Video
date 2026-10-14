@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 import os
-from array import array
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -18,11 +18,11 @@ from . import fonts
 # Schemes a page may load from. Everything else (http, https, ws) is refused so a re-render draws the same frames months later.
 LOCAL_SCHEMES = {"file", "data", "blob"}
 
-# Runs `body` (an async function body of `arg`) and parks its outcome in window.__videoGraphic, so wait_for_function can bound the wait.
+# Starts `body` (an async function body of `arg`) on a later task and parks its outcome in window.__videoGraphic, so the evaluate call returns at once and wait_for_function can bound the wait even when the page's code never returns.
 RUN = """(arg) => {
   const box = window.__videoGraphic = {state: 'pending'};
-  (async (arg) => { %s })(arg).then(v => { box.state = 'ok'; box.value = v === undefined ? null : v },
-                                    e => { box.state = 'error'; box.error = String((e && e.stack) || e) });
+  setTimeout(() => (async (arg) => { %s })(arg).then(v => { box.state = 'ok'; box.value = v === undefined ? null : v },
+                                                      e => { box.state = 'error'; box.error = String((e && e.stack) || e) }), 0);
 }"""
 
 IMAGES = """
@@ -42,15 +42,23 @@ RECORD = """() => {
           duration: d === undefined ? null : (typeof d === 'number' ? d : String(d))};
 }"""
 
-# Calls the page's renderAudio and hands back each channel as base64 float32, which crosses the DevTools boundary far more compactly than a JSON number list.
+# Calls the page's renderAudio and hands back exactly `frames` sample frames, interleaved float32 in base64 (cut or padded with silence here, where it is cheap), with the peak before clipping.
 AUDIO = """
+  const [rate, seconds, frames] = arg;
   if (typeof window.renderAudio !== 'function') return null;
-  const buf = await window.renderAudio(arg[0], arg[1]);
+  const buf = await window.renderAudio(rate, seconds);
   if (buf === null || buf === undefined) return null;
   if (typeof buf.getChannelData !== 'function') throw new Error('window.renderAudio must give an AudioBuffer, a Promise of one, or null; got ' + Object.prototype.toString.call(buf));
-  const b64 = a => { const u = new Uint8Array(a.buffer, a.byteOffset, a.byteLength); let s = '';
-    for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s) };
-  return {rate: buf.sampleRate, channels: Array.from({length: buf.numberOfChannels}, (_, c) => b64(buf.getChannelData(c)))};
+  if (buf.sampleRate !== rate) return {rate: buf.sampleRate};
+  const n = buf.numberOfChannels, out = new Float32Array(frames * n);
+  let peak = 0;
+  for (let c = 0; c < n; c++) {
+    const d = buf.getChannelData(c), m = Math.min(d.length, frames);
+    for (let i = 0; i < m; i++) { const v = d[i]; out[i * n + c] = v; if (Math.abs(v) > peak) peak = Math.abs(v) }
+  }
+  const u = new Uint8Array(out.buffer); let s = '';
+  for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+  return {rate, channels: n, peak, data: btoa(s)};
 """
 
 # Sets the animations the page had when it loaded to `arg` seconds, refuses CSS transitions (they run on the wall clock), then lets two frames pass.
@@ -78,10 +86,12 @@ class Timeouts:
 
 @dataclass
 class Pcm:
-    """The page's sound: float samples per channel at `sample_rate`, as long as the page made them."""
+    """The page's sound: interleaved little-endian float32 sample frames, `channels` to a frame; `peak` is the largest absolute sample, before any clipping."""
 
     sample_rate: int
-    channels: list[array]
+    channels: int
+    data: bytes
+    peak: float
 
 
 @dataclass
@@ -107,6 +117,7 @@ class Page:
         self.blocked: list[str] = []
         self._context = browser.new_context(viewport={"width": width, "height": height}, device_scale_factor=1)
         self._context.route("**/*", self._route)
+        self._context.route_web_socket(lambda url: True, self._refuse_socket)
         self._page = self._context.new_page()
         cdp = self._context.new_cdp_session(self._page)
         cdp.send("Animation.enable")
@@ -125,6 +136,11 @@ class Page:
         if url not in self.blocked:
             self.blocked.append(url)
         route.abort("blockedbyclient")
+
+    def _refuse_socket(self, ws) -> None:
+        # Routed and never connected to its server, the socket reaches nothing. Closing it from here deadlocks Playwright's sync API.
+        if ws.url not in self.blocked:
+            self.blocked.append(ws.url)
 
     def _failed(self, request) -> None:
         if request.url.startswith("file:"):
@@ -173,9 +189,11 @@ class Page:
     # -- time ------------------------------------------------------------------------------------------------------------
 
     def _seek(self, t: float) -> None:
+        deadline = time.monotonic() + self._timeouts.seek
         if self._has_seek:
             self._run("return await window.seek(arg)", t, self._timeouts.seek, "seek", f"window.seek({t:g})")
-        transition = self._run(SETTLE, t, self._timeouts.seek, "seek", f"settling the page at {t:g} s")
+        left = max(deadline - time.monotonic(), 0.001)
+        transition = self._run(SETTLE, t, left, "seek", f"window.seek({t:g}) with the settle after it")
         if transition:
             raise ToolError(f"seek: a CSS transition ({transition}) started at {t:g} s; transitions run on the wall clock, so use @keyframes or window.seek")
         self._check()
@@ -190,20 +208,15 @@ class Page:
                 raise ToolError(f"capture: the frame at {t:g} s could not be captured: {' '.join(str(e).split())[:300]}")
             on_frame(t, png)
 
-    def audio(self, sample_rate: int, seconds: float) -> Pcm | None:
-        """The page's `window.renderAudio(sample_rate, seconds)`, or None when it has none or returns null. A buffer at another rate fails: it would play at the wrong pitch."""
-        got = self._run(AUDIO, [sample_rate, seconds], self._timeouts.audio, "audio", "window.renderAudio")
+    def audio(self, sample_rate: int, seconds: float, frames: int) -> Pcm | None:
+        """The page's `window.renderAudio(sample_rate, seconds)` as exactly `frames` sample frames (a longer buffer is cut, a shorter one padded with silence), or None when the page has none or returns null. A buffer at another rate fails: it would play at the wrong pitch."""
+        got = self._run(AUDIO, [sample_rate, seconds, frames], self._timeouts.audio, "audio", "window.renderAudio")
         self._check()
         if got is None:
             return None
         if got["rate"] != sample_rate:
             raise ToolError(f"audio: window.renderAudio gave a buffer at {got['rate']:g} Hz; make it at the sampleRate it is called with ({sample_rate})")
-        channels = []
-        for data in got["channels"]:
-            a = array("f")
-            a.frombytes(base64.b64decode(data))
-            channels.append(a)
-        return Pcm(sample_rate, channels)
+        return Pcm(sample_rate, got["channels"], base64.b64decode(got["data"]), got["peak"])
 
     def fonts(self, at_times: list[float]) -> list[FontUse]:
         """The faces that drew each requested family across the visible text at these page times, in the order families were first seen."""

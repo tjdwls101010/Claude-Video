@@ -6,8 +6,6 @@ import io
 import math
 import os
 import time
-import wave
-from array import array
 from pathlib import Path
 
 from PIL import Image
@@ -36,13 +34,16 @@ def render(page: Path, out: Path, *, source: Source | None = None, size: tuple[i
     if source is not None:
         seq = read_sequence(source, sequence)
         size, rate = (seq.width, seq.height), seq.rate
-    out.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise InputError(f"--out cannot go in {out.parent}: {e.strerror or e}")
     tmp = out.with_name(f".{out.stem}.rendering-{os.getpid()}{out.suffix}")
-    wav = out.with_name(f".{out.stem}.rendering-{os.getpid()}.wav")
+    raw = out.with_name(f".{out.stem}.rendering-{os.getpid()}.f32")
     try:
         with chrome.open_page(page, *size, timeouts=timeouts) as pg:
             if kind == "video":
-                report = _movie(pg, tmp, wav, rate, duration)
+                report = _movie(pg, tmp, raw, rate, duration, size)
             else:
                 report = _still(pg, tmp, frame_at)
             report["fonts"] = [{"family": f.family, "drawn_by": [{"face": n, "glyphs": g} for n, g in f.drawn_by], "fallback": f.fallback, **({"text": f.text} if f.fallback else {})}
@@ -51,9 +52,11 @@ def render(page: Path, out: Path, *, source: Source | None = None, size: tuple[i
         after = report.pop("_shape")
         change = place.replaced(place.shape(out, kind), after)
         os.replace(tmp, out)
+    except OSError as e:
+        raise ToolError(f"write: {e}")
     finally:
         tmp.unlink(missing_ok=True)
-        wav.unlink(missing_ok=True)
+        raw.unlink(missing_ok=True)
     head = {"out": str(out), "kind": kind, "size": f"{size[0]}x{size[1]}"}
     if kind == "video":
         head["fps"] = f"{rate.num}/{rate.den}" if rate.den != 1 else str(rate.num)
@@ -79,13 +82,15 @@ def _coverage(png: bytes, t: float) -> dict:
     return {"t": round(t, 3), "painted": round(1 - hist[0] / total, 4), "opaque": round(sum(hist[250:]) / total, 4)}
 
 
-def _movie(pg, tmp: Path, wav: Path, rate: Rate, duration: float | None) -> dict:
+def _movie(pg, tmp: Path, raw: Path, rate: Rate, duration: float | None, size: tuple[int, int]) -> dict:
     seconds = _duration(duration, pg.declared_duration)
     n = timing.frame_count(seconds, rate)
     times = timing.frame_times(n, rate)
     length = timing.length(n, rate)
     samples = timing.sample_count(n, rate, SAMPLE_RATE)
-    audio = _sound(pg.audio(SAMPLE_RATE, float(length)), samples, wav)
+    pcm = pg.audio(SAMPLE_RATE, float(length), samples)
+    if pcm is not None:
+        raw.write_bytes(pcm.data)
     keep = {0, n // 2, n - 1}
     kept: dict[int, tuple[float, bytes]] = {}
     count = [0]
@@ -96,9 +101,10 @@ def _movie(pg, tmp: Path, wav: Path, rate: Rate, duration: float | None) -> dict
             kept[count[0]] = (t, png)
         count[0] += 1
 
-    with ffmpeg.AlphaWriter(tmp, rate, wav if audio else None) as enc:
+    with ffmpeg.AlphaWriter(tmp, rate, raw if pcm else None, pcm.channels if pcm else 2) as enc:
         pg.frames(times, on_frame)
-    _verify_movie(tmp, n, rate, samples if audio else None)
+    _verify_movie(tmp, n, rate, size, (samples, pcm.channels) if pcm else None)
+    audio = _levels(pcm, tmp)
     font_times = sorted({0.0, *(float(s) for s in range(1, math.ceil(length))), times[-1]})
     return {"frames": n, "seconds": round(float(length), 6), "coverage": [_coverage(png, t) for _, (t, png) in sorted(kept.items())],
             "audio": audio, "_font_times": font_times, "_shape": place.shape(tmp, "video")}
@@ -111,28 +117,22 @@ def _still(pg, tmp: Path, frame_at: float) -> dict:
     return {"frames": 1, "coverage": [_coverage(shots[0], frame_at)], "audio": None, "_font_times": [frame_at], "_shape": place.shape(tmp, "still")}
 
 
-def _sound(pcm: chrome.Pcm | None, samples: int, wav: Path) -> dict | None:
-    """Write the page's sound as a WAV exactly `samples` long (cut or padded with silence: the movie sets the length) and report its levels. Peak is measured before clipping, so above 0 dBFS means the page's sound clipped."""
+def _levels(pcm: chrome.Pcm | None, movie: Path) -> dict | None:
+    """Peak (before clipping, so above 0 dBFS means the page's sound clipped) and integrated loudness of the sound as delivered; null levels for silence."""
     if pcm is None:
         return None
-    chans = [list(c[:samples]) + [0.0] * (samples - len(c)) for c in pcm.channels] or [[0.0] * samples]
-    peak = max((abs(v) for c in chans for v in c), default=0.0)
-    top = 2**31 - 1
-    frames = array("i", (round(max(-1.0, min(1.0, c[i])) * top) for i in range(samples) for c in chans))
-    with wave.open(str(wav), "wb") as w:
-        w.setnchannels(len(chans))
-        w.setsampwidth(4)
-        w.setframerate(SAMPLE_RATE)
-        w.writeframes(frames.tobytes())
-    if peak == 0:
+    if pcm.peak == 0:
         return {"peak_dbfs": None, "lufs": None}
-    lufs = ffmpeg.loudness(wav).integrated
-    return {"peak_dbfs": round(20 * math.log10(peak), 2), "lufs": round(lufs, 1) if lufs is not None else None}
+    lufs = ffmpeg.loudness(movie).integrated
+    return {"peak_dbfs": round(20 * math.log10(pcm.peak), 2), "lufs": round(lufs, 1) if lufs is not None else None}
 
 
-def _verify_movie(path: Path, frames: int, rate: Rate, samples: int | None) -> None:
-    """Measure what was written rather than trust the encoder: a wrong tag or a dropped frame would otherwise only show in FilmCraft, if at all."""
-    m = ffmpeg.probe(path)
+def _verify_movie(path: Path, frames: int, rate: Rate, size: tuple[int, int], sound: tuple[int, int] | None) -> None:
+    """Measure what was written rather than trust the encoder: a wrong tag or a dropped frame would otherwise only show in FilmCraft, if at all. `sound` is (samples, channels) when the movie must carry the page's sound."""
+    try:
+        m = ffmpeg.probe(path)
+    except InputError as e:
+        raise ToolError(f"verify: the encoded movie cannot be read: {e}")
     problems = []
     v = m.video[0] if m.video else None
     if v is None:
@@ -149,10 +149,13 @@ def _verify_movie(path: Path, frames: int, rate: Rate, samples: int | None) -> N
             problems.append(f"{v.frames} frames, expected {frames}")
         if v.fps != rate.fps:
             problems.append(f"rate {v.fps}, expected {rate.fps}")
-    if samples is not None:
+        if (v.width, v.height) != tuple(size):
+            problems.append(f"size {v.width}x{v.height}, expected {size[0]}x{size[1]}")
+    if sound is not None:
+        samples, channels = sound
         a = m.audio[0] if m.audio else None
-        if a is None or a.sample_rate != SAMPLE_RATE or a.samples != samples:
-            problems.append(f"sound {a and (a.codec, a.sample_rate, a.samples)}, expected {SAMPLE_RATE} Hz and {samples} samples")
+        if a is None or (a.codec, a.sample_rate, a.channels, a.samples) != ("pcm_s24le", SAMPLE_RATE, channels, samples):
+            problems.append(f"sound {a and (a.codec, a.sample_rate, a.channels, a.samples)}, expected pcm_s24le at {SAMPLE_RATE} Hz, {channels} channels, {samples} samples")
     elif m.audio:
         problems.append("a sound stream nobody asked for")
     if problems:

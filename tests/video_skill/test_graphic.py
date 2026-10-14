@@ -323,6 +323,13 @@ def test_fonts_report_the_face_that_drew_and_flag_substitutes(tmp_path):
     assert fonts["NoSuchLaterFamily"]["fallback"] is True                       # text that appears later is sampled too
 
 
+def test_websockets_are_blocked_and_listed(tmp_path):
+    body = "<script>window.opened = new WebSocket('wss://echo.websocket.org/feed')</script><div style='width:10px;height:10px;background:red'></div>"
+    code, out, raw, err = graphic(tmp_path, str(page(tmp_path, body)), "--out", str(tmp_path / "g.png"), "--size", "320x180", "--fps", "30")
+    assert code == 0, raw + err
+    assert "wss://echo.websocket.org/feed" in out["blocked"]
+
+
 def test_network_requests_are_blocked_and_listed(tmp_path):
     body = "<img src='https://example.com/a.png'><link rel=stylesheet href='https://fonts.googleapis.com/css2?family=Noto+Sans+KR'><div style='width:10px;height:10px;background:red'></div>"
     code, out, raw, err = graphic(tmp_path, str(page(tmp_path, body)), "--out", str(tmp_path / "g.png"), "--size", "320x180", "--fps", "30")
@@ -334,12 +341,13 @@ def test_network_requests_are_blocked_and_listed(tmp_path):
 
 @pytest.mark.parametrize("body, stage", [
     ("<script>window.seek = t => new Promise(() => {})</script>", "seek:"),
+    ("<script>window.seek = t => { if (t > 0.2) while (true) {} }</script>", "seek:"),
     ("<img src='missing.png'>", "files:"),
     ("<script>window.seek = t => { if (t > 0.2) undefinedFunction() }</script>", "seek:"),
     ("<script>throw new Error('at load')</script>", "page:"),
     ("<script>Promise.reject(new Error('nobody caught this'))</script>", "page:"),
     ("<script>window.seek = t => { if (t > 0.2) setTimeout(() => { throw new Error('later') }) }</script>", "page:"),
-], ids=["seek never settles", "missing local file", "seek throws", "uncaught at load", "unhandled rejection", "uncaught after seek"])
+], ids=["seek never settles", "seek never returns", "missing local file", "seek throws", "uncaught at load", "unhandled rejection", "uncaught after seek"])
 def test_a_failing_page_exits_1_naming_the_stage_and_keeps_the_earlier_file(tmp_path, body, stage):
     target = tmp_path / "g.mov"
     target.write_bytes(b"an earlier render")
@@ -361,6 +369,39 @@ def test_command_lines_that_must_change_exit_2(tmp_path, args, says):
     code, out, raw, err = graphic(tmp_path, str(page(tmp_path)), "--out", str(tmp_path / "g.mov"), *args)
     assert code == 2, raw + err
     assert says in out["error"] and out["help"].endswith("--help")
+
+
+def test_an_out_folder_that_cannot_exist_exits_2(tmp_path):
+    (tmp_path / "taken").write_text("a file where a folder would go")
+    code, out, raw, err = graphic(tmp_path, str(page(tmp_path)), "--out", str(tmp_path / "taken" / "g.mov"), "--size", "320x180", "--fps", "30", "--duration", "1")
+    assert code == 2, raw + err
+    assert "--out" in out["error"]
+
+
+@pytest.mark.parametrize("seconds, fps, frames", [("0.01", "30", 1), ("0.05", "30", 2), ("0.0166", "30", 1), ("2.5", "24000/1001", 60)],
+                         ids=["under a frame is one", "1.5 rounds up", "0.498 rounds down to the minimum", "2.5 s at 23.976 is 59.94"])
+def test_frame_count_worked_examples(tmp_path, seconds, fps, frames):
+    code, out, raw, err = graphic(tmp_path, str(page(tmp_path)), "--out", str(tmp_path / "g.mov"), "--size", "64x64", "--fps", fps, "--duration", seconds)
+    assert code == 0, raw + err
+    assert out["frames"] == frames and int(video_stream(tmp_path / "g.mov")["nb_read_frames"]) == frames
+
+
+def test_following_if_placed_after_a_length_change_gives_the_new_length(tmp_path):
+    """Place a 1 s render, re-render it at 2 s to the same path, and do what `if_placed` says: clear the placed clip, then run the steps. The clip on the timeline then lasts 2 s."""
+    from support import TICKS, fc, fc_json
+    p = bg_project(tmp_path, seconds=4)
+    g = page(tmp_path, SWATCHES)
+    code, first, raw, err = graphic(tmp_path, str(g), "--out", str(tmp_path / "g.mov"), "--project", str(p), "--duration", "1")
+    assert code == 0, raw + err
+    place_render(tmp_path, p, first, start=0)
+    code, second, raw, err = graphic(tmp_path, str(g), "--out", str(tmp_path / "g.mov"), "--project", str(p), "--duration", "2")
+    assert code == 0, raw + err
+    assert "edit.clear" in second["next"]["if_placed"]
+    placed = [c["clip"] for t in fc_json("inspect", "sequence", project=p, cwd=tmp_path)["video"] for c in t["items"] if c["name"] == "g.mov"]
+    fc("--save", "exec", "edit.clear", json.dumps({"clips": placed}), project=p, cwd=tmp_path)
+    place_render(tmp_path, p, second, start=0)
+    s = fc_json("inspect", "sequence", project=p, cwd=tmp_path)
+    assert [(c["start"], c["end"]) for t in s["video"] for c in t["items"] if c["name"] == "g.mov"] == [(0, 2 * TICKS)]
 
 
 @pytest.mark.parametrize("make", ["gif", "self", "no page", "bad window.duration"])

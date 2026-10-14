@@ -299,10 +299,11 @@ def tracks(p, d) -> dict:
 
 
 def peak_db(path, start, seconds) -> float:
-    """Sample peak in dBFS of [start, start + seconds) (ffmpeg volumedetect); -91 stands for digital silence."""
+    """Sample peak in dBFS of [start, start + seconds) (ffmpeg volumedetect); -91 stands for digital silence. A failed or missing measurement fails the test rather than reading as silence."""
     r = subprocess.run([FFMPEG, "-v", "info", "-ss", str(start), "-t", str(seconds), "-i", str(path), "-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True, timeout=120)
     m = re.search(r"max_volume: (-?[\d.]+|-inf) dB", r.stderr)
-    return -91.0 if m is None or m.group(1) == "-inf" else float(m.group(1))
+    assert r.returncode == 0 and m is not None, f"no level measured in {path}: {r.stderr[-500:]}"
+    return -91.0 if m.group(1) == "-inf" else float(m.group(1))
 
 
 def centre(png) -> tuple:
@@ -404,9 +405,15 @@ def test_23_a_placed_clip_keeps_the_length_and_streams_read_at_import(tmp_path):
     assert lime_at(p, "longer", 2.5) and not lime_at(p, "longer", 3.5)
 
     g, p = place("shorter", 3, True)
-    prores_4444(g, 1, color="lime", tone_hz=1000)
+    # 1 s: lime, then its last 0.5 s blue, so what shows past the end tells a held last frame from a held first frame or a loop
+    ffmpeg("-f", "lavfi", "-i", "color=c=lime:s=640x360:r=30:d=0.5,format=rgba", "-f", "lavfi", "-i", "color=c=blue:s=640x360:r=30:d=0.5,format=rgba",
+           "-f", "lavfi", "-i", "sine=frequency=1000:sample_rate=48000:duration=1", "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v]", "-map", "[v]", "-map", "2:a",
+           "-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", "-c:a", "pcm_s16le", str(g))
     assert tracks(p, tmp_path)["V2"] == [("shorter.mov", 1.0, 4.0)] and tracks(p, tmp_path)["A2"] == [("shorter.mov", 1.0, 4.0)]
-    assert lime_at(p, "shorter", 3.5)                                   # the last frame holds to the old end
+    assert lime_at(p, "shorter", 1.2)
+    fc("render", "--seconds", "3.5", "--out", str(tmp_path / "held.png"), project=p, cwd=tmp_path)
+    r, gr, b = centre(tmp_path / "held.png")
+    assert b > 150 and gr < 60                                          # the last frame holds to the old end
     assert tone_peak(p, "shorter_in", 1.2) > -25 and tone_peak(p, "shorter_past", 2.5) < -60
 
     g, p = place("gained", 3, False)

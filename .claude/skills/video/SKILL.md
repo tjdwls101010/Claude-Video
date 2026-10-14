@@ -89,7 +89,7 @@ When: talking heads, interviews, lectures, meetings, summaries, anything caption
 
 ## On-screen text
 
-When: captions, titles, lower thirds, any text layer.
+When: captions, and titles or lower thirds made as FilmCraft text layers.
 
 - The default font, Inter, has no Hangul: Korean draws as boxes. Set an installed Korean family (`fonts.list`; Apple SD Gothic Neo, Noto Sans KR) on every caption track and text layer, then look at a render.
 - Caption `size` is relative to a 1080-line frame, so a size that looks right in landscape is far bigger in a vertical frame. `captions` accounts for it; a style set by hand does not.
@@ -100,8 +100,8 @@ When: a title, lower third, callout, number or chart, how an inserted image is s
 
 - Design them as HTML pages (CSS, SVG, Canvas, whatever the design needs) and render them with `graphic`. FilmCraft does the cut, timing, placement and track order, anything worked on the footage's own pixels (blurring or reframing the picture behind a graphic, color), sound, transitions between shots, and captions. Code gives the widest range of design; FilmCraft's graphics are text and shape layers moved by keyframes, which takes repeated test renders to get timing and easing right; and a rendered graphic survives an FCP7 XML handoff while a FilmCraft graphic is dropped. When the user wants to adjust a graphic themselves in FilmCraft, make it there instead.
 - Two that look alike: pushing in on the person speaking works on the footage's pixels, so it is FilmCraft's Motion; pushing in on one spot of an image shown on screen is movement inside the graphic, so it belongs to the page. Where the line is unclear (word-by-word caption animation, a highlight following something in the footage), say which side you chose and why.
-- Judge how a graphic sits in the picture from FilmCraft's render (`frames --project`); a browser is fine for working on the page itself. FilmCraft blends in linear light, so anything partly transparent (a dark gradient, a shadow, a 90 % box) comes out visibly lighter over the picture than it looks in a browser or an ffmpeg composite: make such layers more opaque than looks right in the page.
-- Keep each page and its render in the piece's `graphics/`: the project plays the render, and a change request edits the page. Re-render to the same path and the project picks it up; `graphic`'s output says when the clip has to be placed again.
+- Judge how a graphic sits in the picture from FilmCraft's render (`frames --project`); a browser is fine for working on the page itself. FilmCraft blends in linear light, so anything partly transparent (a gradient, a shadow, a 90 % box, a glow) comes out lighter over the picture than in a browser or an ffmpeg composite: a dark layer looks weaker and a light one stronger, so set its opacity against FilmCraft's render.
+- A change request edits the page, not the render. Re-render to the same path and the project picks it up; `graphic`'s output says when the clip has to be placed again or relinked.
 - Sound effects can come from the same page (`renderAudio` in `graphic --help`), so they stay attached to the frames they belong to.
 
 ## Changing the frame shape

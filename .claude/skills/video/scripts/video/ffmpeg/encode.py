@@ -15,18 +15,18 @@ VIDEO_FILTER = "scale=out_color_matrix=bt709:out_range=tv,format=yuva444p10le,se
 
 
 class AlphaWriter:
-    """Pipe PNG frames in with `write`; on leaving the block, the movie is finished at `out` with `audio_wav` (if given) muxed from its first frame as 24-bit PCM. Raises ToolError (stage `encode`) if ffmpeg fails."""
+    """Pipe PNG frames in with `write`; on leaving the block, the movie is finished at `out` with `audio` (raw interleaved float32 at 48 kHz, `channels` to a frame), if given, muxed from its first frame as 24-bit PCM. Raises ToolError (stage `encode`) if ffmpeg fails."""
 
-    def __init__(self, out: Path, rate: Rate, audio_wav: Path | None = None):
-        self.out, self.rate, self.audio_wav = Path(out), rate, audio_wav
+    def __init__(self, out: Path, rate: Rate, audio: Path | None = None, channels: int = 2):
+        self.out, self.rate, self.audio, self.channels = Path(out), rate, audio, channels
         self._proc = None
         self._log = None
 
     def __enter__(self) -> "AlphaWriter":
         rate = f"{self.rate.num}/{self.rate.den}"
         cmd = [tool("ffmpeg"), "-v", "error", "-y", "-f", "image2pipe", "-c:v", "png", "-framerate", rate, "-i", "-"]
-        if self.audio_wav is not None:
-            cmd += ["-i", str(self.audio_wav), "-map", "0:v", "-map", "1:a", "-c:a", "pcm_s24le", "-ar", "48000"]
+        if self.audio is not None:
+            cmd += ["-f", "f32le", "-ar", "48000", "-ac", str(self.channels), "-i", str(self.audio), "-map", "0:v", "-map", "1:a", "-c:a", "pcm_s24le"]
         cmd += ["-vf", VIDEO_FILTER, "-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", "-r", rate, str(self.out)]
         self._cmd = cmd
         self._log = tempfile.TemporaryFile()

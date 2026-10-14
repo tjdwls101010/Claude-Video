@@ -236,3 +236,11 @@ def test_17_narration_speaks_english_only(proj):
     assert [l["id"] for l in voices["languages"]] == ["en-US"]
     r = fc("exec", "tts.preview", json.dumps({"text": "안녕하세요 반갑습니다", "path": str(d / "ko.wav")}), cwd=d, check=False)
     assert r.returncode != 0 and "nothing to say" in r.stderr
+
+
+def test_18_headless_export_without_wait_writes_nothing(proj):
+    """SKILL.md › How the CLI fails quietly: `exec file.exportMedia` returns a job id at once (wait defaults to false) and the headless process exits with it, so no file is written; pass wait:true, or use the `export` subcommand, which waits."""
+    d, p = proj
+    r = fc_json("exec", "file.exportMedia", json.dumps({"path": str(d / "nowait.mp4"), "format": "h264", "range": "entire"}), project=p, cwd=d)
+    assert "job" in r
+    assert not (d / "nowait.mp4").exists()

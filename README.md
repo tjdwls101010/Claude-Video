@@ -1,10 +1,10 @@
-# Claude-Video: FilmCraft 편집 스킬
+# Claude-Video: FilmCraft 편집 + 코드 그래픽 스킬
 
-이 맥에 설치된 [FilmCraft](https://github.com/storytold/filmcraft)(어도비 프리미어 프로를 클론한 오픈소스 편집기)를 Claude Code가 직접 다루게 하는 프로젝트 스킬입니다. "이 영상으로 ○○ 만들어줘"라고 하면, Claude가 사용자와 의논하며 편집합니다. 결과물은 검수를 통과한 영상과, 사용자가 FilmCraft에서 다시 열어 고칠 수 있는 `.fcproj` 프로젝트입니다.
+이 맥에 설치된 [FilmCraft](https://github.com/storytold/filmcraft)(어도비 프리미어 프로를 클론한 오픈소스 편집기)를 Claude Code가 직접 다루게 하는 프로젝트 스킬입니다. "이 영상으로 ○○ 만들어줘"라고 하면, Claude가 사용자와 의논하며 편집합니다. 타이틀·자료 화면·인트로 같은 그래픽과 효과음은 Claude가 코드(HTML/CSS/SVG/Canvas, Web Audio)로 직접 디자인해 투명 영상으로 렌더하고 타임라인에 얹습니다. 결과물은 검수를 통과한 영상과, 사용자가 FilmCraft에서 다시 열어 고칠 수 있는 `.fcproj` 프로젝트, 그리고 다시 고쳐 렌더할 수 있는 그래픽 페이지입니다.
 
 - 스킬 본문: [`.claude/skills/video/SKILL.md`](.claude/skills/video/SKILL.md)(영어, 모델이 읽는 글)
 - 번들 도구: [`.claude/skills/video/scripts/cli.py`](.claude/skills/video/scripts/cli.py)
-- 개발 기록(대조 실험 수치, 버린 대안, 리뷰 내역): [PR #1](https://github.com/tjdwls101010/Claude-Video/pull/1)
+- 개발 기록(대조 실험 수치, 버린 대안, 리뷰 내역): 편집은 [PR #1](https://github.com/tjdwls101010/Claude-Video/pull/1), 그래픽·효과음은 이 기능을 더한 PR
 
 ## 무엇을 할 수 있나
 
@@ -14,6 +14,9 @@
 | 한국어 자막 | 넷플릭스 한국어 규칙(줄당 16자, 2줄, 초당 12자, 5/6~7초)과 실제 화면 폭에 맞춘 자막, 영어 대담의 번역 자막 |
 | 세로 숏폼 | 쇼츠·릴스·틱톡용 리프레이밍(말하는 사람 따라가기), 플랫폼 UI 세이프존 확인 |
 | 몽타주·B-roll | 클립 훑어보기, 장면 전환 감지, 음악 박자 측정과 컷 맞춤, 배경음악 더킹 |
+| 그래픽·모션 그래픽 | 타이틀, 로워서드, 콜아웃, 숫자·데이터 그래픽, 기사 캡처 같은 자료 화면 연출, 그라디언트 바 같은 레이아웃 요소, 인트로를 코드로 디자인해 얹기 |
+| 효과음 | 그래픽과 같은 페이지에서 Web Audio로 합성해 그 프레임에 붙여 넣기 |
+| 단독 모션 그래픽 | 원본 영상 없이 코드로 만든 모션 그래픽 영상(인트로, 스팅 등) |
 | 색보정 | 스코프 수치로 중립 보정, S-Log3 등 로그 소스에 입력 LUT 적용 |
 | 납품·검수 | 유튜브·쇼츠·릴스·틱톡·한국 방송 기준 기술 검수(라우드니스·트루피크·해상도·fps·길이·faststart), 유튜브 챕터 |
 | 다른 편집기로 넘기기 | Premiere·Resolve용 FCP7 XML, OTIO, AAF/OMF, EDL |
@@ -23,7 +26,8 @@
 
 이 스킬의 Claude는 혼자 끝까지 만드는 편집자가 아니라, 사용자와 의논하며 만드는 동료입니다.
 
-- 컷 리듬, 전환, 필러를 얼마나 남길지, 자막·타이틀 디자인, 룩, 음악을 어떻게 끝낼지 같은 취향은 사용자가 정합니다. Claude는 자기 판단으로 제안하고 이유를 한 줄로 말합니다.
+- 컷 리듬, 전환, 필러를 얼마나 남길지, 자막·타이틀 디자인, 그래픽을 얼마나·어떻게 넣고 얼마나 움직일지, 룩, 음악을 어떻게 끝낼지 같은 취향은 사용자가 정합니다. Claude는 자기 판단으로 제안하고 이유를 한 줄로 말합니다.
+- 취향을 따로 적어 두지 않습니다. 사용자의 `data/`에 쌓인 이전 작품(프로젝트, 그래픽 페이지, 최종 영상)이 그 사람이 고른 것의 기록이라, 비슷한 작품이 있으면 Claude가 거기서 취향을 읽고 제안합니다.
 - 바꾸기 쉬운 것은 먼저 해 보이고 프레임 시트로 보여 줍니다.
 - 되돌리기 비싸거나 결과의 성격을 정하는 것은 후보와 근거를 보여 주고 먼저 묻습니다. 어느 구간을 쓸지, 전체 룩, 긴 내보내기, 모델 다운로드가 그렇습니다.
 - 사용자가 자기 방식을 말하면 그쪽이 스킬보다 우선합니다.
@@ -36,7 +40,8 @@
 | macOS와 FilmCraft 앱 | `/Applications/FilmCraft.app` |
 | 앱과 같은 버전의 `filmcraft-cli` | `filmcraft-cli --version`이 앱 버전과 같음 |
 | [uv](https://docs.astral.sh/uv/) | `uv --version` (번들 도구와 mlx-whisper를 격리 실행) |
-| ffmpeg, ffprobe | `brew install ffmpeg` (측정용으로만 씀) |
+| ffmpeg, ffprobe | `brew install ffmpeg` (측정, 그리고 렌더한 그래픽의 인코딩) |
+| Google Chrome | `/Applications/Google Chrome.app` (그래픽 렌더. 없으면 `graphic`이 설치 방법을 알려 주고, Claude는 Chromium 다운로드 전에 먼저 묻습니다) |
 | Apple Silicon | 음성 인식(mlx-whisper)에 필요 |
 | 한글 폰트 | `filmcraft-cli exec fonts.list`에 Apple SD Gothic Neo 또는 Noto Sans KR |
 
@@ -61,6 +66,10 @@ install -m 755 "filmcraft-cli-$VER-macos-universal/filmcraft-cli" ~/.local/bin/f
 - "가장 임팩트 있는 장면 골라 50초 쇼츠로. 후보부터 보여줘"
 - "이 클립들이랑 음악으로 30초 하이라이트 만들어줘"
 - "S-Log로 찍은 거 자연스럽게 보정해서 마스터 뽑아줘"
+- "아기 발진 얘기 나오는 대목에 이 기사 캡처 띄우고, 말하는 타이밍에 헤드라인에 형광펜 그어줘"
+- "채널 로고로 3초짜리 인트로 만들어 줘. 효과음도"
+
+다른 프로젝트 폴더에서 쓰려면 그 프로젝트의 `.claude/skills/video`를 이 레포의 스킬 폴더로 심볼릭 링크합니다. 이름으로 부르려면 `/video`.
 
 기본은 앱 창 없이 CLI(헤드리스)로 작업합니다. 앱을 보며 같이 작업하려면 앱을 제어 포트로 띄웁니다. 이미 실행 중인 앱에는 인자가 전달되지 않으니, 저장 후 종료한 뒤 띄웁니다.
 
@@ -81,15 +90,33 @@ FilmCraft에 없는 일만 합니다. 모두 `uv run .claude/skills/video/script
 | `timeline` | 시퀀스를 요약합니다(클립 수와 무관하게 짧음). 클립별 TC 상세는 파일로 줍니다 |
 | `frames` | 렌더하거나 추출한 프레임을 TC 라벨 시트 한 장으로 만듭니다. 세로 영상이면 쇼츠·릴스·틱톡 세이프존을 겹쳐 그립니다 |
 | `qc` | 결과 파일을 대상별 기준으로 검수합니다. 기준표와 각 기준의 근거(규정/플랫폼 사양/측정/관행/결정)는 `qc --help`에 있습니다. 실패가 있으면 종료 코드 3입니다 |
+| `graphic` | HTML 페이지를 시퀀스 크기·정확한 fps의 투명 ProRes 4444 MOV(효과음 포함) 또는 투명 PNG로 렌더합니다. 프레임마다 페이지 시간을 맞춰 캡처하고, 색 태그·프레임 수를 검증한 뒤에만 기존 파일을 바꿉니다. 실제로 글자를 그린 폰트, 차단한 네트워크 요청, 타임라인에 얹는 명령을 함께 줍니다. 페이지 작성 규칙은 `graphic --help`에 있습니다 |
 
 ```bash
 uv run .claude/skills/video/scripts/cli.py qc out/final.mp4 --target shorts
 uv run .claude/skills/video/scripts/cli.py frames --project out/edit.fcproj --cuts --overlay all --out sheet.png
+uv run .claude/skills/video/scripts/cli.py graphic graphics/title.html --out graphics/title.mov --project edit.fcproj --duration 3
+```
+
+## 작업 폴더 `data/`
+
+`.claude/skills/video/data`는 사용자마다 자기 작업 폴더를 가리키는 자리입니다(git 제외, 보통 심볼릭 링크). 작품마다 같은 모양을 지켜서 다음 작업에서 이전 작품을 찾아 읽을 수 있게 합니다.
+
+```
+data/
+├── assets/                  여러 작품이 같이 쓰는 재료(로고, BGM, 아웃트로)
+└── <작품>/                  예: 261013_국정감사 4일차
+    ├── <이름>.fcproj         FilmCraft 프로젝트
+    ├── <결과물>.mp4          내보낸 결과물(딸린 자막·인계 파일도 여기)
+    ├── assets/              가져온 재료. 공용 재료는 복사(APFS 복제)해 와서 작품 폴더만으로 프로젝트가 열림
+    ├── graphics/            코드로 만든 그래픽의 페이지(HTML)와 렌더. 프로젝트가 재생하므로 지우지 않음
+    ├── etc/                 그 밖: 다른 도구 파일, 다시 쓸 전사·자막 원고. 일회용 파일은 끝날 때 지움
+    └── FilmCraft Previews/  FilmCraft가 자동으로 만드는 렌더 캐시(결과물 아님)
 ```
 
 ## 스킬이 있을 때와 없을 때
 
-같은 과제를 스킬 없이, 그리고 스킬을 켜고 격리된 `claude -p`로 돌린 결과입니다(Opus 5.5, FilmCraft 0.7.2, 2026-10-14). 과제는 한 번 입력하고 끝까지 가는 단독 실행이라, 여러 턴에 걸친 협업 품질은 재지 않았습니다.
+편집 도구에 대해, 같은 과제를 스킬 없이, 그리고 스킬을 켜고 격리된 `claude -p`로 돌린 결과입니다(Opus 5.5, FilmCraft 0.7.2, 2026-10-14). 과제는 한 번 입력하고 끝까지 가는 단독 실행이라, 여러 턴에 걸친 협업 품질은 재지 않았습니다.
 
 | 항목 | 스킬 없음 | 스킬 있음 |
 |---|---|---|
@@ -109,15 +136,16 @@ uv run .claude/skills/video/scripts/cli.py frames --project out/edit.fcproj --cu
 ```
 .claude/skills/video/
 ├── SKILL.md                 모델이 읽는 스킬 본문
+├── data/                    사용자 작업 폴더(git 제외)
 └── scripts/
     ├── cli.py               유일한 진입점(파서·도움말·종료 코드)
     └── video/               유일한 패키지
-        ├── transcribe/ captions/ timeline/ frames/ qc/   기능
-        ├── filmcraft/ whisper/ ffmpeg/ mp4/              외부 시스템·형식
-        └── timecode.py errors.py                         공용
+        ├── transcribe/ captions/ timeline/ frames/ qc/ graphic/   기능
+        ├── filmcraft/ whisper/ ffmpeg/ mp4/ chrome/               외부 시스템·형식
+        └── timecode.py errors.py                                  공용
 tests/
 ├── video_skill/             번들 도구 테스트(명령 프로토콜, 순수 코어, 구조 규칙)
-├── filmcraft_facts/         스킬이 기대는 FilmCraft 동작 19개
+├── filmcraft_facts/         스킬이 기대는 FilmCraft 동작 24개
 └── support/                 테스트 공용 도우미
 .mcp.json                    실행 중인 앱용 브리지 MCP
 .tmp/filmcraft/              FilmCraft 0.7.2 소스(동작 확인용 참고)
@@ -128,15 +156,15 @@ tests/
 ## 테스트
 
 ```bash
-uv run --with pytest --with pillow pytest                       # 전부
+uv run --with pytest --with pillow --with playwright pytest      # 전부
 uv run --with pytest --with pillow pytest tests/filmcraft_facts # FilmCraft 사실만
 FILMCRAFT_TEST_WHISPER=1 uv run --with pytest --with pillow pytest -k real_whisper  # 실제 Whisper 경로
 ```
 
 - 테스트 미디어는 ffmpeg와 macOS `say`로 그때그때 만듭니다. 기대값은 생성 조건이나 표준(EBU Tech 3341, SMPTE 드롭프레임)에서 옵니다.
-- filmcraft-cli가 없으면 해당 테스트는 이유를 출력하며 건너뜁니다.
+- filmcraft-cli가 없으면 해당 테스트는 이유를 출력하며 건너뜁니다. `test_chrome.py`는 Chrome을 테스트 프로세스 안에서 구동하므로 `--with playwright`가 없으면 건너뜁니다. `graphic` 테스트는 진입점을 `uv run`으로 부르므로 PEP 723 헤더가 Playwright를 공급합니다.
 
-**FilmCraft는 1~2일마다 업데이트됩니다.** 업데이트 뒤 `tests/filmcraft_facts`가 실패하면, 실패한 테스트의 docstring이 가리키는 SKILL.md 문장을 고치거나 지우세요. 테스트를 느슨하게 고치는 것으로 해결하면 안 됩니다.
+**FilmCraft는 1~2일마다 업데이트됩니다.** 업데이트 뒤 `tests/filmcraft_facts`가 실패하면, 실패한 테스트의 docstring이 가리키는 SKILL.md 문장(또는 `graphic --help` 문구)을 고치거나 지우세요. 테스트를 느슨하게 고치는 것으로 해결하면 안 됩니다.
 
 ## 한계
 
@@ -144,4 +172,5 @@ FILMCRAFT_TEST_WHISPER=1 uv run --with pytest --with pillow pytest -k real_whisp
 - 화자를 구분하지 못합니다. 질문자와 답변자의 말이 한 자막에 섞일 수 있습니다.
 - 이 FilmCraft 빌드는 자체 음성 인식이 없고, 내레이션(TTS)은 영어만 됩니다.
 - 세이프존 수치는 플랫폼의 광고 가이드 기준입니다. 일반 게시물 UI와는 조금 다를 수 있습니다.
+- 그래픽의 색은 FilmCraft 안에서 왕복이 맞도록 BT.709로 태그합니다. Premiere 같은 다른 플레이어에서의 미세한 감마 차이는 확인하지 않았습니다.
 - `.tmp/etc/`의 테스트 영상은 개인 테스트용이라 레포에 넣지 않습니다.

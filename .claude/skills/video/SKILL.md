@@ -1,21 +1,22 @@
 ---
 name: video
 description: >-
-  Edit video with FilmCraft, the open-source Premiere-style editor installed on this Mac, through `filmcraft-cli` (headless) or the running app (bridge): cuts and transcript-based edits, vertical Shorts/Reels/TikTok, highlight and music montages, audio mix and loudness, color correction, Korean captions and titles, QC-checked exports, and handoff to Premiere or Resolve. Use whenever the user wants a video cut, captioned, reframed, graded, mixed or exported, or mentions FilmCraft or a .fcproj. Triggers include: 영상 편집, 컷편집, 자막, 쇼츠, 릴스, 하이라이트, 몽타주, 색보정, 내보내기, 유튜브 업로드용, .fcproj, FilmCraft. Not for developing FilmCraft's own source code.
+  Make and edit video with FilmCraft, the open-source Premiere-style editor installed on this Mac, through `filmcraft-cli` (headless) or the running app (bridge), with graphics and motion graphics designed in code (HTML/CSS/SVG/Canvas) and rendered onto the edit: cuts and transcript-based edits, vertical Shorts/Reels/TikTok, montages, titles, lower thirds, callouts, data graphics, how inserted images are shown, intros and sound effects, standalone motion graphics, audio mix and loudness, color, Korean captions, QC-checked exports, and handoff to Premiere or Resolve. Use whenever the user wants a video cut, captioned, reframed, graded, mixed, given graphics, or exported, or mentions FilmCraft or a .fcproj. Triggers include: 영상 편집, 컷편집, 자막, 쇼츠, 릴스, 하이라이트, 몽타주, 모션 그래픽, 그래픽, 타이틀, 로워서드, 인트로, 효과음, 색보정, 내보내기, 유튜브 업로드용, .fcproj, FilmCraft. Not for downloading, summarizing or transcribing a video without editing it, still images such as thumbnails or posters, slide decks, or developing FilmCraft's own source code.
 allowed-tools:
   - Bash(filmcraft-cli *)
   - Bash(uv run "${CLAUDE_SKILL_DIR}/scripts/cli.py" *)
   - Bash(ffprobe *)
 ---
 
-# Editing video with FilmCraft
+# Making video with FilmCraft
 
-FilmCraft exposes about 700 commands; `filmcraft-cli commands <filter>` and `filmcraft-cli describe <id>` own their parameters. This skill holds what those do not say: how the CLI fails, what platforms require, how to work with the user, and five tools FilmCraft lacks, called as `uv run "${CLAUDE_SKILL_DIR}/scripts/cli.py" transcribe|captions|timeline|frames|qc …`; each `<tool> --help` owns its numbers, outputs and exit codes.
+FilmCraft exposes about 700 commands; `filmcraft-cli commands <filter>` and `filmcraft-cli describe <id>` own their parameters. This skill holds what those do not say: how the CLI fails, what platforms require, how to work with the user, and six tools FilmCraft lacks, called as `uv run "${CLAUDE_SKILL_DIR}/scripts/cli.py" transcribe|captions|timeline|frames|qc|graphic …`; each `<tool> --help` owns its numbers, outputs and exit codes.
 
 ## Working with the user
 
 - You edit together with the user, usually over many turns, and users differ: some bring a method of their own, some want your eye. Whatever they tell you about how they work outranks anything in this skill, for the rest of the work.
-- Taste is theirs to decide and yours to offer: cut rhythm, transitions, how much pause or filler to keep, caption and title design, the look, how music ends, shot order. Use your own judgment, and say in a line what you chose and why so they can redirect. When their choice departs from what you would do, do theirs; when it collides with a platform requirement or a fact below, say so once with the consequence and let them decide.
+- Taste is theirs to decide and yours to offer: cut rhythm, transitions, how much pause or filler to keep, caption and title design, graphics (how many, how they look and how much they move), the look, how music ends, shot order. Use your own judgment, and say in a line what you chose and why so they can redirect. When their choice departs from what you would do, do theirs; when it collides with a platform requirement or a fact below, say so once with the consequence and let them decide.
+- `${CLAUDE_SKILL_DIR}/data/` is the user's own record of work: each earlier piece there (its project, the pages in its `graphics/`, the exported video) is what they chose. When you propose something taste decides, such as how graphics look or how a piece is built, and an earlier piece resembles this one, read their taste from it; it informs your proposal and does not bind it. Unless the user names another folder, a new piece goes in `data/<piece>/`, so it becomes the record for the next one.
 - Cheap to change (a trim, a transition, a caption style, a title's wording): make the call, show it (a `frames` sheet, a `render`), and move on.
 - Costly to undo, or setting what the piece is (which segments a highlight or summary keeps, the overall look, a long export, a model download): show candidates and your reasons, and ask first.
 
@@ -24,8 +25,9 @@ FilmCraft exposes about 700 commands; `filmcraft-cli commands <filter>` and `fil
 - The saved `.fcproj` reopens in a fresh process with the edit intact: `timeline --project` on it matches what you report.
 - A rendered deliverable passes `qc` for its target. Re-export at most twice for a qc failure; if it still fails (FilmCraft's true-peak limiter wins over a loudness target), stop and report the measurements.
 - You looked at the result: `frames` at every cut and every frame with text, and the final cut's words (`transcript.inspect`) read through for a sentence cut off or a splice that changes what someone said.
+- Each graphic was seen in FilmCraft's render (`frames --project`) as it enters, at its fullest and as it leaves; `graphic` reported no `fallback` font and nothing `blocked`, or the user accepted what it did; its page is in the piece's `graphics/`. How it looks and moves is yours and the user's to choose; these only make sure it was seen as delivered and can still be changed.
 - Say what changed, the calls you made that the user did not, and what you could not verify. You cannot hear the cut, so how its audio flows is always unverified.
-- Edit only in FilmCraft, so the user can open the project and change it; ffmpeg and ffprobe only measure. The one exception changes no picture or sound: a lossless `ffmpeg -i IN -c copy -movflags +faststart OUT` on the final MP4.
+- Edit picture and sound only in FilmCraft, so the user can open the project and change it; graphics are pages rendered with `graphic` and placed there. ffmpeg and ffprobe otherwise only measure. The one exception changes no picture or sound: a lossless `ffmpeg -i IN -c copy -movflags +faststart OUT` on the final MP4.
 
 ## Before the first command
 
@@ -46,6 +48,7 @@ FilmCraft exposes about 700 commands; `filmcraft-cli commands <filter>` and `fil
 - `exec file.exportMedia` returns a job id at once and a headless process exits with it, writing nothing. Pass `"wait": true`, or use the `export` subcommand, which waits.
 - zsh does not split an unquoted `$OPTS` into words; write the options out.
 - Time and ids: `timecode` ignores the sequence's start timecode, and Mark Out includes its frame. `timeline.razor` without `track` or `clip` cuts every track, and the right-hand pieces get new ids, so read them back before the next step. `graphics.*` take `track` as a 0-based index. `file.newSequenceFromClip` makes only the tracks the clip needs (V1/A1); `sequence.addTracks` before placing on V2.
+- Placing media with sound: `timeline.place` puts the sound on the targeted audio track (A1 unless targeting changed), overwriting the speech there, unless `audioTrack` names another track; `graphics.newFromFile` leaves the sound out. Pass `"audioTrack": "new"` or a free track.
 - Defaults `describe` does not show: `clip.audioGain` without `mode` adds to the current gain; `clip.speedDuration` without `reverse` turns reverse playback off; `sequence.linkedSelection` without `on` toggles.
 
 ## Command families by job
@@ -91,6 +94,16 @@ When: captions, titles, lower thirds, any text layer.
 - The default font, Inter, has no Hangul: Korean draws as boxes. Set an installed Korean family (`fonts.list`; Apple SD Gothic Neo, Noto Sans KR) on every caption track and text layer, then look at a render.
 - Caption `size` is relative to a 1080-line frame, so a size that looks right in landscape is far bigger in a vertical frame. `captions` accounts for it; a style set by hand does not.
 
+## Graphics and motion graphics
+
+When: a title, lower third, callout, number or chart, how an inserted image is shown, a layout element (a bar, a gradient, a frame), an intro or sting, or a motion graphic video on its own.
+
+- Design them as HTML pages (CSS, SVG, Canvas, whatever the design needs) and render them with `graphic`. FilmCraft does the cut, timing, placement and track order, anything worked on the footage's own pixels (blurring or reframing the picture behind a graphic, color), sound, transitions between shots, and captions. Code gives the widest range of design; FilmCraft's graphics are text and shape layers moved by keyframes, which takes repeated test renders to get timing and easing right; and a rendered graphic survives an FCP7 XML handoff while a FilmCraft graphic is dropped. When the user wants to adjust a graphic themselves in FilmCraft, make it there instead.
+- Two that look alike: pushing in on the person speaking works on the footage's pixels, so it is FilmCraft's Motion; pushing in on one spot of an image shown on screen is movement inside the graphic, so it belongs to the page. Where the line is unclear (word-by-word caption animation, a highlight following something in the footage), say which side you chose and why.
+- Judge how a graphic sits in the picture from FilmCraft's render (`frames --project`); a browser is fine for working on the page itself. FilmCraft blends in linear light, so anything partly transparent (a dark gradient, a shadow, a 90 % box) comes out visibly lighter over the picture than it looks in a browser or an ffmpeg composite: make such layers more opaque than looks right in the page.
+- Keep each page and its render in the piece's `graphics/`: the project plays the render, and a change request edits the page. Re-render to the same path and the project picks it up; `graphic`'s output says when the clip has to be placed again.
+- Sound effects can come from the same page (`renderAudio` in `graphic --help`), so they stay attached to the frames they belong to.
+
 ## Changing the frame shape
 
 When: the delivery's aspect ratio differs from the source's.
@@ -129,7 +142,7 @@ When: a grade is asked for, or the picture is clearly off (log footage, a colour
 
 ## Working files
 
-- Intermediates go in `<project>.work/` next to the project, and what is no longer needed goes at the end. Write nothing outside the user's folders: a file in `/tmp` may be unreadable to you in a restricted session.
+- Every piece has the same shape, so a later session can find its way in: the project and its deliverables (the exported video, sidecar captions, handoff files) at the piece's root; `assets/` for material brought in (footage, music, logos, references; shared material from `data/assets/` is copied in with `cp -c`, a free clone on APFS, so the piece's folder alone opens the project); `graphics/` for pages and their renders, kept because the project plays them; `etc/` for the rest (other tools' files, transcripts and caption drafts worth keeping), with throwaway files such as frame sheets removed at the end. Write nothing outside the user's folders: a file in `/tmp` may be unreadable to you in a restricted session.
 - No global installs; tools run through `uv run` and `uvx`.
 - FilmCraft keeps `FilmCraft Previews/`, its render cache, next to every saved project with a sequence. It is not an output; say so rather than leaving the user to wonder.
 

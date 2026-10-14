@@ -1,0 +1,1 @@
+"""Errors every unit raises."""

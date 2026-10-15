@@ -4,7 +4,7 @@
 
 - 스킬 본문: [`.claude/skills/video/SKILL.md`](.claude/skills/video/SKILL.md)(영어, 모델이 읽는 글)
 - 번들 도구: [`.claude/skills/video/scripts/cli.py`](.claude/skills/video/scripts/cli.py)
-- 개발 기록(대조 실험 수치, 버린 대안, 리뷰 내역): 편집은 [PR #1](https://github.com/tjdwls101010/Claude-Video/pull/1), 그래픽·효과음은 이 기능을 더한 PR
+- 개발 기록(대조 실험 수치, 버린 대안, 리뷰 내역): 편집은 [PR #1](https://github.com/tjdwls101010/Claude-Video/pull/1), 그래픽·효과음은 [PR #3](https://github.com/tjdwls101010/Claude-Video/pull/3)
 
 ## 무엇을 할 수 있나
 
